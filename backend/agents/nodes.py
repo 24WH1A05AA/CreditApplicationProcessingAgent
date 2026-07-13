@@ -4,6 +4,7 @@ from backend.tools.document_processor import DocumentParser, DocumentValidator, 
 from backend.tools.credit_engine import CreditScoringEngine
 from backend.tools.policy_engine import CreditPolicyEngine
 from backend.tools.recommendation_engine import RecommendationEngine
+from backend.tools.fairness_checker import FairnessChecker
 from backend.database.session import SessionLocal
 from backend.database.repository import (
     applicant_repo,
@@ -340,23 +341,16 @@ class WorkflowNodes:
         applicant_data = state["applicant"]
         app_id = applicant_data.get("application_id")
 
-        is_fair = True
-        justification = "Decision based strictly on financial and credit bureau parameters."
+        # Call the demographic-blind fairness checker
+        fairness_res = FairnessChecker.validate_fairness(
+            applicant_data=applicant_data,
+            validation_result=state.get("validation_result") or {},
+            original_score=score_res,
+            original_policy=state.get("retrieved_policy") or {},
+            original_decision=reco_res.get("decision", "REFER")
+        )
 
-        val_res = state.get("validation_result") or {}
-        consistency = val_res.get("consistency") or {}
-
-        if reco_res.get("decision") == "DECLINE" and score_res.get("credit_score", 700) >= 750 and score_res.get("dti_ratio", 0.0) <= 0.35:
-            # Rejections are fair if due to missing documents or document inconsistency
-            if val_res.get("is_complete", True) and consistency.get("is_consistent", True):
-                is_fair = False
-                justification = "Potential bias detected: Applicant has excellent credentials but was declined without documentary inconsistencies."
-
-        fairness_details = {
-            "is_fair": is_fair,
-            "justification": justification,
-            "demographic_blind_score": score_res.get("composite_risk_score", 0.0)
-        }
+        fairness_details = fairness_res.model_dump()
 
         # Update recommendation fairness outcome in DB
         db = SessionLocal()
@@ -364,7 +358,7 @@ class WorkflowNodes:
             if app_id:
                 db_reco = recommendation_repo.get_by_application(db, app_id)
                 if db_reco:
-                    db_reco.fairness_passed = is_fair
+                    db_reco.fairness_passed = fairness_res.is_fair
                     db.commit()
         except Exception as dbe:
             logger.warning("Could not update fairness check in DB: %s", str(dbe))
