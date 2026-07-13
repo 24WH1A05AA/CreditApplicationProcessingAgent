@@ -1,0 +1,15 @@
+# TechVest Fraud Detection and Prevention Policy
+
+## Section 1: Identity and Document Matching
+[Clause FP-DOC-01]
+To prevent identity theft, the application intake must check the consistency of documents. Any name discrepancy exceeding a standard spelling distance between the PAN card, Aadhaar card, and the application form must result in an immediate REFER status with a reason code of FP-NAME-DISCREPANCY.
+
+[Clause FP-DOC-02]
+All uploaded documents must be checked for signs of tampering, photo manipulation, or falsification. Multiple applications submitted with identical document images but different name profiles must be blacklisted.
+
+## Section 2: Income Verification Checks
+[Clause FP-INC-01]
+Salary slips submitted by the applicant must show consistent month-on-month tax deduction (TDS) figures. Any employer names listed on salary slips must correspond to active registered corporate entities.
+
+[Clause FP-INC-02]
+Bank statements of the last 6 months must show recurring salary credits matching the salary slip values. Any non-standard deposits, round-trip transactions, or irregular cash inflows that inflate the average balance artificially must be flagged for manual credit inspection.

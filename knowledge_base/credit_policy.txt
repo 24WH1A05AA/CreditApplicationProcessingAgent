@@ -1,0 +1,28 @@
+# TechVest Internal Credit Policy
+
+## Section 1: Debt-to-Income (DTI) Regulations
+[Clause CP-DTI-01]
+The maximum allowable Debt-to-Income (DTI) ratio is 45% for salaried applicants and 40% for self-employed applicants. DTI is calculated as: (Total Existing EMIs + Proposed Loan EMI) / Gross Monthly Income. Any application with a DTI exceeding these thresholds must be flagged as REFER or DECLINE depending on credit history.
+
+[Clause CP-DTI-02]
+For borderline applicants (DTI between 40% and 45% for salaried), the application may be APPROVED only if the credit score is above 750 and the employment stability is greater than 3 years. Otherwise, it must be referred.
+
+## Section 2: Credit Score Thresholds
+[Clause CP-CS-01]
+Standard credit assessment categories based on Bureau Credit Scores:
+- Credit Score >= 750: Eligible for automatic recommendation of APPROVE, subject to satisfactory DTI and documentation.
+- Credit Score 650 to 749: Standard category, must be flagged as REFER for manual underwriter review.
+- Credit Score < 650: Low category, must be automatically flagged as DECLINE.
+
+[Clause CP-CS-02]
+No loan application can be approved if there is any active default or write-off reported in the last 12 months, regardless of the credit score.
+
+## Section 3: Income stability rules
+[Clause CP-INC-01]
+The minimum monthly income required for a loan application is:
+- Salaried applicants: INR 25,000 per month.
+- Self-employed applicants: INR 35,000 per month.
+Gross monthly income must be verified using the last 3 months' salary slips and 6 months' bank statements.
+
+[Clause CP-INC-02]
+Applicants must show a continuous employment history of at least 12 months with their current employer, or at least 24 months of active business operations if self-employed.

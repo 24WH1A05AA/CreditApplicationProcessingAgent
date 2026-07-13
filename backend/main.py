@@ -7,6 +7,7 @@ from backend.utils.logging import logger
 from contextlib import asynccontextmanager
 from backend.database.session import Base, engine
 from backend.models import db_models  # Import to register models in Base metadata
+from backend.rag.pipeline import rag_pipeline
 
 # Set up lifespan context manager
 @asynccontextmanager
@@ -21,6 +22,14 @@ async def lifespan(app: FastAPI):
         logger.info("Database tables initialized successfully.")
     except Exception as e:
         logger.error("Error creating database tables: %s", str(e))
+        
+    # Initialize RAG Pipeline
+    logger.info("Initializing RAG Pipeline...")
+    try:
+        rag_pipeline.initialize_pipeline()
+        logger.info("RAG Pipeline initialized successfully.")
+    except Exception as e:
+        logger.error("Error initializing RAG Pipeline: %s", str(e))
         
     yield
     # Shutdown

@@ -1,0 +1,19 @@
+# RBI Regulatory Guidelines
+
+## Section 1: Customer Identification (KYC)
+[Clause RBI-KYC-01]
+Every lending entity must complete customer identification verification (KYC) prior to loan disbursement. Acceptable official valid documents (OVD) include Aadhaar Card, PAN Card, Passport, or Voter ID. Digital verification using Aadhaar e-KYC or Video KYC is permitted.
+
+[Clause RBI-KYC-02]
+All document images uploaded by the customer must be clear, readable, and verify that the name, date of birth, and identity numbers match the national registries.
+
+## Section 2: Fair Practices Code
+[Clause RBI-FPC-01]
+Credit evaluation must be objective and free from bias. Identity attributes such as race, gender, religion, cast, or geographic location must not influence the recommendation engine. Underwriting models must execute fairness validation to check that removing demographic indicators results in an identical credit recommendation.
+
+[Clause RBI-FPC-02]
+Lenders must communicate the decision on a loan application (approved, referred, or rejected) in writing, along with the key reasons or criteria that led to that outcome.
+
+## Section 3: Digital Lending Guidelines
+[Clause RBI-DLG-01]
+All digital loan disbursements and repayments must be executed directly between the bank account of the lender and the borrower. No pool accounts or third-party pass-throughs are permitted.
