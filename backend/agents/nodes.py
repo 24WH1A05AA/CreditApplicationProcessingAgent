@@ -28,7 +28,7 @@ class WorkflowNodes:
     def loan_intake(state: UnderwritingState) -> Dict[str, Any]:
         """
         Node 1: Loan Intake
-        Accepts stated applicant info and registers the initial application in the database.
+        Creates/retrieves applicant and application in DB, associates documents, and updates state IDs.
         """
         logger.info("LangGraph Node: Executing Loan Intake...")
         app_data = state["applicant"]
@@ -48,25 +48,34 @@ class WorkflowNodes:
                     "existing_emi": app_data.get("existing_emi", 0.0)
                 })
             
-            # 2. Register a new Loan Application in DB
-            db_application = application_repo.create(db, obj_in={
-                "applicant_id": db_applicant.id,
-                "loan_amount": app_data.get("loan_amount", 100000.0),
-                "loan_purpose": app_data.get("loan_purpose", "Personal Loan"),
-                "status": "INTAKE",
-                "credit_score": None,
-                "dti_ratio": None
-            })
-
-            # 3. Associate documents with the application in DB
-            for doc in docs_list:
-                document_repo.create(db, obj_in={
-                    "application_id": db_application.id,
-                    "document_type": doc["document_type"],
-                    "file_path": doc["file_path"],
-                    "is_valid": None,
-                    "validation_result": None
+            # 2. Register or Retrieve Loan Application in DB
+            app_id = app_data.get("application_id")
+            db_application = None
+            if app_id:
+                db_application = application_repo.get(db, app_id)
+                
+            if not db_application:
+                db_application = application_repo.create(db, obj_in={
+                    "applicant_id": db_applicant.id,
+                    "loan_amount": app_data.get("loan_amount", 100000.0),
+                    "loan_purpose": app_data.get("loan_purpose", "Personal Loan"),
+                    "status": "INTAKE",
+                    "credit_score": None,
+                    "dti_ratio": None
                 })
+
+            # 3. Associate documents with the application in DB (if not already stored)
+            for doc in docs_list:
+                existing_docs = document_repo.get_by_application(db, db_application.id)
+                existing_types = [d.document_type for d in existing_docs]
+                if doc["document_type"] not in existing_types:
+                    document_repo.create(db, obj_in={
+                        "application_id": db_application.id,
+                        "document_type": doc["document_type"],
+                        "file_path": doc["file_path"],
+                        "is_valid": None,
+                        "validation_result": None
+                    })
 
             # Update the applicant dict in state to store generated IDs
             updated_applicant = {**app_data, "id": db_applicant.id, "application_id": db_application.id}

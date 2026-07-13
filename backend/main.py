@@ -1,19 +1,46 @@
+import os
+import shutil
 import uvicorn
-from fastapi import FastAPI, Depends, HTTPException, status
+from contextlib import asynccontextmanager
+from typing import Dict, Any, List
+from fastapi import FastAPI, Depends, HTTPException, status, Form, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session
+
 from backend.config import settings
 from backend.utils.logging import logger
-
-from contextlib import asynccontextmanager
-from backend.database.session import Base, engine
-from backend.models import db_models  # Import to register models in Base metadata
+from backend.database.session import Base, engine, get_db
+from backend.models import db_models
+from backend.models.schemas import (
+    ApplicationCreate,
+    HumanDecisionCreate,
+    Application as ApplicationSchema,
+    Document as DocumentSchema,
+    Recommendation as RecommendationSchema
+)
+from backend.database.repository import (
+    applicant_repo,
+    application_repo,
+    document_repo,
+    policy_result_repo,
+    recommendation_repo,
+    human_decision_repo,
+    audit_log_repo
+)
 from backend.rag.pipeline import rag_pipeline
+from backend.agents.workflow import run_underwriting_workflow
 
-# Set up lifespan context manager
+# Configure document uploads folder
+UPLOAD_DIR = "./uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+# Lifespan Context Manager
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
     logger.info("Starting up %s in %s environment", settings.APP_NAME, settings.ENV)
+    
+    # Ensure uploads dir exists
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
     
     # Initialize Database Tables
     logger.info("Initializing database tables...")
@@ -32,8 +59,8 @@ async def lifespan(app: FastAPI):
         logger.error("Error initializing RAG Pipeline: %s", str(e))
         
     yield
-    # Shutdown
     logger.info("Shutting down %s", settings.APP_NAME)
+
 
 # Initialize FastAPI application
 app = FastAPI(
@@ -48,13 +75,15 @@ app = FastAPI(
 # Set up CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Restrict this in production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Root/Health check endpoint
+
+# ================= System Endpoints =================
+
 @app.get("/health", tags=["System"])
 async def health_check():
     return {
@@ -64,50 +93,194 @@ async def health_check():
         "version": "1.0.0"
     }
 
-# Mock API routes for each workflow stage (to be replaced with actual routers as they are implemented)
-@app.post("/applications", tags=["Applications"])
-async def create_application(application_data: dict):
-    logger.info("Intake loan application received")
-    return {"message": "Application received", "status": "PENDING_DOCS"}
 
-@app.post("/documents/upload", tags=["Documents"])
-async def upload_document():
-    logger.info("Document upload received")
-    return {"message": "Document uploaded successfully"}
+# ================= Application REST Endpoints =================
 
-@app.post("/applications/score", tags=["Scoring"])
-async def score_application():
-    logger.info("Credit score and DTI calculation request")
-    return {"message": "Scored successfully"}
+@app.post("/applications", response_model=dict, tags=["Applications"])
+async def create_loan_application(app_in: ApplicationCreate, db: Session = Depends(get_db)):
+    """
+    1. Upload Application details and registers applicant in database.
+    """
+    logger.info("REST: Creating loan application for applicant %s", app_in.applicant.email)
+    
+    # Fetch or Create Applicant
+    db_applicant = applicant_repo.get_by_email(db, app_in.applicant.email)
+    if not db_applicant:
+        db_applicant = applicant_repo.create(db, obj_in=app_in.applicant.model_dump())
+        
+    # Create Loan Application
+    db_app = application_repo.create(db, obj_in={
+        "applicant_id": db_applicant.id,
+        "loan_amount": app_in.loan_amount,
+        "loan_purpose": app_in.loan_purpose,
+        "status": "INTAKE"
+    })
+    
+    # Audit log
+    audit_log_repo.create(db, obj_in={
+        "application_id": db_app.id,
+        "action": "CREATE_APPLICATION",
+        "performed_by": "SYSTEM",
+        "details": {"applicant_id": db_applicant.id, "loan_amount": app_in.loan_amount}
+    })
+    
+    return {
+        "status": "success",
+        "message": "Application uploaded successfully.",
+        "application_id": db_app.id,
+        "applicant_id": db_applicant.id,
+        "application_status": db_app.status
+    }
 
-@app.post("/recommendation", tags=["Recommendations"])
-async def recommend():
-    logger.info("Decision recommendation generated")
-    return {"message": "Recommendation generated"}
 
-@app.post("/fairness/check", tags=["Fairness"])
-async def fairness_check():
-    logger.info("Identity-blind fairness check executed")
-    return {"message": "Fairness check passed"}
+@app.post("/applications/{application_id}/documents", tags=["Documents"])
+async def upload_loan_documents(
+    application_id: str,
+    document_type: str = Form(..., description="PAN, Aadhaar, Salary Slip, Bank Statement"),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    """
+    2. Upload Documents associated with application.
+    """
+    logger.info("REST: Uploading document type %s for application %s", document_type, application_id)
+    
+    application = application_repo.get(db, application_id)
+    if not application:
+        raise HTTPException(status_code=404, detail=f"Application not found: {application_id}")
+        
+    # Save file locally
+    file_ext = os.path.splitext(file.filename)[1]
+    safe_name = f"{application_id}_{document_type.replace(' ', '_').lower()}{file_ext}"
+    file_path = os.path.join(UPLOAD_DIR, safe_name)
+    
+    try:
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save document on disk: {str(e)}")
+        
+    # Create database document row
+    db_doc = document_repo.create(db, obj_in={
+        "application_id": application_id,
+        "document_type": document_type,
+        "file_path": file_path,
+        "is_valid": None,
+        "validation_result": None
+    })
+    
+    # Update application status
+    application.status = "DOCS_UPLOADED"
+    db.commit()
+    
+    audit_log_repo.create(db, obj_in={
+        "application_id": application_id,
+        "action": "UPLOAD_DOCUMENT",
+        "performed_by": "SYSTEM",
+        "details": {"document_type": document_type, "file_path": file_path}
+    })
+    
+    return {
+        "status": "success",
+        "message": f"Document '{document_type}' uploaded successfully.",
+        "document_id": db_doc.id,
+        "file_path": file_path
+    }
 
-from sqlalchemy.orm import Session
-from backend.database.session import get_db
-from backend.models.schemas import HumanDecisionCreate
-from backend.database.repository import human_decision_repo, application_repo, audit_log_repo
+
+@app.post("/applications/{application_id}/process", tags=["Processing"])
+async def process_loan_application(application_id: str, db: Session = Depends(get_db)):
+    """
+    3. Process Application - runs the compiled LangGraph workflow end-to-end.
+    """
+    logger.info("REST: Triggering LangGraph workflow processing for application %s", application_id)
+    
+    application = application_repo.get(db, application_id)
+    if not application:
+        raise HTTPException(status_code=404, detail=f"Application not found: {application_id}")
+        
+    db_applicant = applicant_repo.get(db, application.applicant_id)
+    db_docs = document_repo.get_by_application(db, application_id)
+    
+    # Prepare initial state for LangGraph
+    initial_state = {
+        "applicant": {
+            "id": db_applicant.id,
+            "application_id": application_id,
+            "first_name": db_applicant.first_name,
+            "last_name": db_applicant.last_name,
+            "email": db_applicant.email,
+            "dob": db_applicant.dob,
+            "monthly_income": db_applicant.monthly_income,
+            "existing_emi": db_applicant.existing_emi,
+            "loan_amount": application.loan_amount,
+            "loan_purpose": application.loan_purpose
+        },
+        "documents": [
+            {
+                "document_type": doc.document_type,
+                "file_path": doc.file_path
+            } for doc in db_docs
+        ],
+        "validation_result": None,
+        "retrieved_policy": None,
+        "score": None,
+        "recommendation": None,
+        "fairness_result": None,
+        "audit_data": None,
+        "human_approval": None,
+        "metadata": {}
+    }
+    
+    # Invoke LangGraph Graph
+    final_state = run_underwriting_workflow(initial_state)
+    
+    if final_state.get("metadata", {}).get("workflow_status") == "FAILED":
+        raise HTTPException(
+            status_code=500,
+            detail=f"Underwriting workflow crashed: {final_state['metadata'].get('workflow_execution_error')}"
+        )
+        
+    return {
+        "status": "success",
+        "message": "Loan application processed successfully.",
+        "scoring": final_state.get("score"),
+        "recommendation": final_state.get("recommendation"),
+        "fairness": final_state.get("fairness_result")
+    }
+
+
+@app.get("/applications/{application_id}/recommendation", response_model=dict, tags=["Recommendations"])
+async def get_application_recommendation(application_id: str, db: Session = Depends(get_db)):
+    """
+    4. Recommendation details retrieval.
+    """
+    logger.info("REST: Querying recommendation details for application: %s", application_id)
+    reco = recommendation_repo.get_by_application(db, application_id)
+    if not reco:
+        raise HTTPException(status_code=404, detail="Recommendation not found. Process the application first.")
+        
+    return {
+        "application_id": application_id,
+        "decision": reco.decision,
+        "reasoning": reco.reasoning,
+        "composite_score": reco.composite_score,
+        "fairness_passed": reco.fairness_passed,
+        "created_at": str(reco.created_at)
+    }
+
 
 @app.post("/approval", tags=["Governance"])
 async def record_approval(decision_data: HumanDecisionCreate, db: Session = Depends(get_db)):
-    logger.info("Underwriter human decision captured for application %s", decision_data.application_id)
+    """
+    5. Human Approval governance submission.
+    """
+    logger.info("REST: Underwriter human decision captured for application %s", decision_data.application_id)
     
-    # 1. Fetch application
     application = application_repo.get(db, decision_data.application_id)
     if not application:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Application not found: {decision_data.application_id}"
-        )
+        raise HTTPException(status_code=404, detail=f"Application not found: {decision_data.application_id}")
         
-    # 2. Persist decision
     db_decision = human_decision_repo.create(db, obj_in={
         "application_id": decision_data.application_id,
         "decision": decision_data.decision,
@@ -115,8 +288,7 @@ async def record_approval(decision_data: HumanDecisionCreate, db: Session = Depe
         "underwriter_email": decision_data.underwriter_email
     })
     
-    # 3. Update application status
-    # Standard states: APPROVED, DECLINED, REFER
+    # Map decision states: APPROVED, DECLINED, REFER
     mapped_status = decision_data.decision.upper()
     if mapped_status in ["APPROVE", "APPROVED"]:
         application.status = "APPROVED"
@@ -127,7 +299,6 @@ async def record_approval(decision_data: HumanDecisionCreate, db: Session = Depe
         
     db.commit()
     
-    # 4. Save audit log
     audit_log_repo.create(db, obj_in={
         "application_id": decision_data.application_id,
         "action": "HUMAN_APPROVAL",
@@ -142,9 +313,13 @@ async def record_approval(decision_data: HumanDecisionCreate, db: Session = Depe
         "application_status": application.status
     }
 
+
 @app.get("/audit/{application_id}", tags=["Audit"])
 async def get_audit(application_id: str, db: Session = Depends(get_db)):
-    logger.info("Querying audit trail logs for application: %s", application_id)
+    """
+    6. Audit History session tracking.
+    """
+    logger.info("REST: Querying audit trail logs for application: %s", application_id)
     logs = audit_log_repo.get_by_application(db, application_id)
     return {
         "application_id": application_id,
@@ -159,10 +334,47 @@ async def get_audit(application_id: str, db: Session = Depends(get_db)):
         ]
     }
 
-@app.get("/applications/{id}", tags=["Applications"])
-async def get_application(id: str):
-    logger.info("Query application details for %s", id)
-    return {"id": id}
+
+@app.get("/applications/{application_id}", response_model=dict, tags=["Applications"])
+async def get_application_status(application_id: str, db: Session = Depends(get_db)):
+    """
+    7. Application Status metadata query.
+    """
+    logger.info("REST: Fetching status details for application %s", application_id)
+    application = application_repo.get(db, application_id)
+    if not application:
+        raise HTTPException(status_code=404, detail=f"Application not found: {application_id}")
+        
+    db_applicant = applicant_repo.get(db, application.applicant_id)
+    db_docs = document_repo.get_by_application(db, application_id)
+    
+    return {
+        "id": application.id,
+        "applicant": {
+            "first_name": db_applicant.first_name,
+            "last_name": db_applicant.last_name,
+            "email": db_applicant.email,
+            "dob": db_applicant.dob,
+            "monthly_income": db_applicant.monthly_income,
+            "existing_emi": db_applicant.existing_emi
+        },
+        "loan_amount": application.loan_amount,
+        "loan_purpose": application.loan_purpose,
+        "status": application.status,
+        "credit_score": application.credit_score,
+        "dti_ratio": application.dti_ratio,
+        "created_at": str(application.created_at),
+        "updated_at": str(application.updated_at),
+        "documents": [
+            {
+                "id": doc.id,
+                "document_type": doc.document_type,
+                "file_path": doc.file_path,
+                "is_valid": doc.is_valid
+            } for doc in db_docs
+        ]
+    }
+
 
 if __name__ == "__main__":
     uvicorn.run(
@@ -171,3 +383,4 @@ if __name__ == "__main__":
         port=settings.PORT,
         reload=settings.DEBUG
     )
+
