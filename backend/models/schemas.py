@@ -80,7 +80,7 @@ class HumanDecisionBase(BaseModel):
     underwriter_email: EmailStr
 
 class HumanDecisionCreate(HumanDecisionBase):
-    pass
+    application_id: str
 
 class HumanDecision(HumanDecisionBase):
     id: str

@@ -90,10 +90,57 @@ async def fairness_check():
     logger.info("Identity-blind fairness check executed")
     return {"message": "Fairness check passed"}
 
+from sqlalchemy.orm import Session
+from backend.database.session import get_db
+from backend.models.schemas import HumanDecisionCreate
+from backend.database.repository import human_decision_repo, application_repo, audit_log_repo
+
 @app.post("/approval", tags=["Governance"])
-async def record_approval():
-    logger.info("Underwriter human decision captured")
-    return {"message": "Human decision recorded"}
+async def record_approval(decision_data: HumanDecisionCreate, db: Session = Depends(get_db)):
+    logger.info("Underwriter human decision captured for application %s", decision_data.application_id)
+    
+    # 1. Fetch application
+    application = application_repo.get(db, decision_data.application_id)
+    if not application:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Application not found: {decision_data.application_id}"
+        )
+        
+    # 2. Persist decision
+    db_decision = human_decision_repo.create(db, obj_in={
+        "application_id": decision_data.application_id,
+        "decision": decision_data.decision,
+        "comments": decision_data.comments,
+        "underwriter_email": decision_data.underwriter_email
+    })
+    
+    # 3. Update application status
+    # Standard states: APPROVED, DECLINED, REFER
+    mapped_status = decision_data.decision.upper()
+    if mapped_status in ["APPROVE", "APPROVED"]:
+        application.status = "APPROVED"
+    elif mapped_status in ["DECLINE", "REJECT", "DECLINED"]:
+        application.status = "DECLINED"
+    else:
+        application.status = "REFER"
+        
+    db.commit()
+    
+    # 4. Save audit log
+    audit_log_repo.create(db, obj_in={
+        "application_id": decision_data.application_id,
+        "action": "HUMAN_APPROVAL",
+        "performed_by": decision_data.underwriter_email,
+        "details": {"decision": decision_data.decision, "comments": decision_data.comments}
+    })
+    
+    return {
+        "status": "success",
+        "message": f"Human decision '{decision_data.decision}' persisted successfully.",
+        "decision_id": db_decision.id,
+        "application_status": application.status
+    }
 
 @app.get("/audit/{id}", tags=["Audit"])
 async def get_audit(id: str):
