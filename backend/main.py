@@ -5,13 +5,23 @@ from backend.config import settings
 from backend.utils.logging import logger
 
 from contextlib import asynccontextmanager
+from backend.database.session import Base, engine
+from backend.models import db_models  # Import to register models in Base metadata
 
 # Set up lifespan context manager
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting up %s in %s environment", settings.APP_NAME, settings.ENV)
-    # Database and RAG initializations can be hooked here
+    
+    # Initialize Database Tables
+    logger.info("Initializing database tables...")
+    try:
+        Base.metadata.create_all(bind=engine)
+        logger.info("Database tables initialized successfully.")
+    except Exception as e:
+        logger.error("Error creating database tables: %s", str(e))
+        
     yield
     # Shutdown
     logger.info("Shutting down %s", settings.APP_NAME)
