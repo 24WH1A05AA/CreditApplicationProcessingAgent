@@ -44,18 +44,15 @@ class RAGPipeline:
             
             try:
                 if ext == ".pdf":
-                    # Load PDF using PyPDFLoader
                     logger.info("Loading PDF document: %s", filename)
                     loader = PyPDFLoader(file_path)
                     pages = loader.load()
-                    # Combine pages or add them individually
                     full_content = "\n".join([page.page_content for page in pages])
                     documents.append({
                         "content": full_content,
                         "metadata": {"source": filename}
                     })
                 elif ext in [".txt", ".md"]:
-                    # Load Text/Markdown files using TextLoader
                     logger.info("Loading text/markdown document: %s", filename)
                     loader = TextLoader(file_path, encoding="utf-8")
                     docs = loader.load()
@@ -71,9 +68,8 @@ class RAGPipeline:
 
     def initialize_pipeline(self):
         """
-        Loads documents, chunks them, embeds them, and indexes them in a Chroma vector store.
+        Loads documents, chunks them by clause markers, and indexes them in a Chroma vector store.
         """
-        # Ensure data directory exists for Chroma persistence
         os.makedirs(os.path.dirname(settings.CHROMA_DB_PATH), exist_ok=True)
         
         documents = self.load_documents()
@@ -81,36 +77,49 @@ class RAGPipeline:
             logger.warning("No documents loaded to initialize RAG pipeline.")
             return
 
-        # Chunking using RecursiveCharacterTextSplitter
-        text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=500,
-            chunk_overlap=50,
-            separators=["\n\n", "\n", " ", ""]
-        )
-
         texts = []
         metadatas = []
+        
+        # Split documents using policy [Clause ] markers for absolute accuracy
         for doc in documents:
-            splits = text_splitter.split_text(doc["content"])
-            for split in splits:
-                if split.strip():
-                    texts.append(split.strip())
+            content = doc["content"]
+            if "[Clause " in content:
+                parts = content.split("[Clause ")
+                # Add pre-clause header if it exists
+                if parts[0].strip():
+                    texts.append(parts[0].strip())
                     metadatas.append(doc["metadata"])
+                
+                # Add each clause as an individual chunk
+                for part in parts[1:]:
+                    reconstructed = "[Clause " + part
+                    if reconstructed.strip():
+                        texts.append(reconstructed.strip())
+                        metadatas.append(doc["metadata"])
+            else:
+                # Fallback to standard character splitter if no clause tags exist
+                text_splitter = RecursiveCharacterTextSplitter(
+                    chunk_size=500,
+                    chunk_overlap=50,
+                    separators=["\n\n", "\n", " ", ""]
+                )
+                splits = text_splitter.split_text(content)
+                for split in splits:
+                    if split.strip():
+                        texts.append(split.strip())
+                        metadatas.append(doc["metadata"])
 
         self.chunks = texts
         logger.info("Created %d text chunks from knowledge base", len(self.chunks))
 
         # Build Chroma Vector Store
         try:
-            # Clean up existing persistence directory if possible to avoid state mismatch
-            # (only in dev/tests environment when starting fresh)
             self.vector_db = Chroma.from_texts(
                 texts=texts,
                 embedding=self.embeddings,
                 metadatas=metadatas,
                 persist_directory=settings.CHROMA_DB_PATH
             )
-            
             logger.info("ChromaDB vector store initialized and persisted successfully at %s.", settings.CHROMA_DB_PATH)
         except Exception as e:
             logger.error("Failed to initialize Chroma vector store: %s", str(e))
@@ -124,18 +133,16 @@ class RAGPipeline:
             logger.warning("RAG pipeline not initialized. Retrying initialization...")
             self.initialize_pipeline()
 
-        # Keyword matching heuristics for mock/test environment reliability
         results = []
         keywords = {
             "dti": ["dti", "debt-to-income", "emi", "expense"],
-            "credit": ["credit score", "bureau", "cibil", "credit history", "score"],
+            "credit": ["credit score", "bureau", "cibil", "credit history", "score", "default", "defaults", "write-off", "write-offs"],
             "income": ["income", "salaried", "salary", "self-employed", "employment"],
             "kyc": ["kyc", "aadhaar", "pan card", "identification", "ovd"],
             "fair": ["fair", "bias", "gender", "race", "equality"],
             "fraud": ["fraud", "tamper", "falsification", "matching", "discrepancy"]
         }
 
-        # Check if query matches any keywords
         matched_categories = []
         for category, terms in keywords.items():
             if any(term in query.lower() for term in terms):
@@ -158,19 +165,15 @@ class RAGPipeline:
         # Retrieve via ChromaDB similarity search
         if self.vector_db:
             try:
-                # Query ChromaDB using raw similarity search with score
                 docs_and_scores = self.vector_db.similarity_search_with_score(query, k=k)
                 for doc, score in docs_and_scores:
                     clause_match = re.search(r"\[Clause ([A-Z0-9\-]+)\]", doc.page_content)
                     citation = clause_match.group(1) if clause_match else "General Policy"
                     
-                    # Ensure no duplicate content added
                     if not any(res["content"] == doc.page_content for res in results):
-                        # If using FakeEmbeddings, assign a low similarity score so keyword match takes priority
                         if isinstance(self.embeddings, FakeEmbeddings):
                             sim_score = 0.0
                         else:
-                            # Chroma distance: smaller is better. Map distance to similarity range [0, 1]
                             sim_score = 1.0 / (1.0 + max(0.0, float(score)))
                             
                         results.append({
@@ -181,7 +184,6 @@ class RAGPipeline:
             except Exception as e:
                 logger.warning("ChromaDB vector search query skipped or failed: %s", str(e))
 
-        # Sort results by score (descending) and take top k
         results = sorted(results, key=lambda x: x["score"], reverse=True)
         return results[:k]
 
