@@ -142,10 +142,22 @@ async def record_approval(decision_data: HumanDecisionCreate, db: Session = Depe
         "application_status": application.status
     }
 
-@app.get("/audit/{id}", tags=["Audit"])
-async def get_audit(id: str):
-    logger.info("Audit log query for application %s", id)
-    return {"id": id, "logs": []}
+@app.get("/audit/{application_id}", tags=["Audit"])
+async def get_audit(application_id: str, db: Session = Depends(get_db)):
+    logger.info("Querying audit trail logs for application: %s", application_id)
+    logs = audit_log_repo.get_by_application(db, application_id)
+    return {
+        "application_id": application_id,
+        "logs": [
+            {
+                "id": log.id,
+                "action": log.action,
+                "performed_by": log.performed_by,
+                "details": log.details,
+                "timestamp": str(log.timestamp)
+            } for log in logs
+        ]
+    }
 
 @app.get("/applications/{id}", tags=["Applications"])
 async def get_application(id: str):

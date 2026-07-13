@@ -419,15 +419,36 @@ class WorkflowNodes:
         """
         logger.info("LangGraph Node: Executing Audit Logging...")
         applicant_data = state["applicant"]
-        reco_res = state.get("recommendation") or {}
+        app_id = applicant_data.get("application_id")
+
+        # Compile complete state trace for absolute auditability
+        complete_trace = {
+            "applicant": applicant_data,
+            "documents": state.get("documents", []),
+            "validation_result": state.get("validation_result"),
+            "retrieved_policy": state.get("retrieved_policy"),
+            "score": state.get("score"),
+            "recommendation": state.get("recommendation"),
+            "fairness_result": state.get("fairness_result"),
+            "human_approval": state.get("human_approval"),
+            "tool_calls": [
+                "DocumentParser",
+                "DocumentValidator",
+                "ConsistencyChecker",
+                "CreditScoringEngine",
+                "CreditPolicyEngine",
+                "RecommendationEngine",
+                "FairnessChecker"
+            ]
+        }
 
         db = SessionLocal()
         try:
             db_log = audit_log_repo.create(db, obj_in={
-                "application_id": applicant_data.get("application_id"),
+                "application_id": app_id,
                 "action": "WORKFLOW_EXECUTION",
                 "performed_by": "LANGGRAPH_ENGINE",
-                "details": {"decision": reco_res.get("decision"), "reasoning": reco_res.get("reasoning")}
+                "details": complete_trace
             })
             
             audit_details = {
