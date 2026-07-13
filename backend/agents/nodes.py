@@ -3,6 +3,7 @@ from backend.agents.state import UnderwritingState
 from backend.tools.document_processor import DocumentParser, DocumentValidator, ConsistencyChecker
 from backend.tools.credit_engine import CreditScoringEngine
 from backend.tools.policy_engine import CreditPolicyEngine
+from backend.tools.recommendation_engine import RecommendationEngine
 from backend.database.session import SessionLocal
 from backend.database.repository import (
     applicant_repo,
@@ -283,54 +284,14 @@ class WorkflowNodes:
         applicant_data = state["applicant"]
         app_id = applicant_data.get("application_id")
 
-        reco_status = "APPROVE"
-        reco_reasons = []
+        # Call structured recommendation engine
+        reco_output = RecommendationEngine.generate_recommendation(
+            validation_result=val_res,
+            score_result=score_res,
+            retrieved_policy=policy_res
+        )
 
-        # Rule 1: Document Validation failures
-        if not val_res.get("is_complete", True):
-            reco_status = "DECLINE"
-            reco_reasons.append("Missing required lending documentation.")
-        
-        consistency = val_res.get("consistency") or {}
-        if not consistency.get("is_consistent", True):
-            reco_status = "REFER"
-            reco_reasons.append(f"Document consistency check discrepancies: {', '.join(consistency.get('discrepancies', []))}")
-
-        # Rule 2: Score boundaries
-        if score_res.get("has_active_defaults"):
-            reco_status = "DECLINE"
-            reco_reasons.append("Active defaults reported on bureau file in the last 12 months.")
-
-        if score_res.get("credit_score", 700) < 650:
-            reco_status = "DECLINE"
-            reco_reasons.append("Bureau Credit Score below minimum threshold.")
-        elif score_res.get("credit_score", 700) < 750 and reco_status != "DECLINE":
-            reco_status = "REFER"
-            reco_reasons.append("Credit score requires manual underwriting review.")
-
-        # Rule 3: DTI boundaries
-        if score_res.get("dti_ratio", 0.0) > 0.45:
-            reco_status = "DECLINE"
-            reco_reasons.append("Debt-to-Income (DTI) ratio exceeds maximum allowed 45%.")
-        elif score_res.get("dti_ratio", 0.0) > 0.40 and reco_status != "DECLINE":
-            reco_status = "REFER"
-            reco_reasons.append("DTI ratio falls into referral range.")
-
-        # Rule 4: Policy evaluation results override
-        if policy_res.get("any_failed", False):
-            reco_status = "DECLINE"
-            reco_reasons.append("One or more credit policy checks failed.")
-        elif policy_res.get("any_refer", False) and reco_status != "DECLINE":
-            reco_status = "REFER"
-            reco_reasons.append("Policy checks require referral.")
-
-        reco_reasoning = "; ".join(reco_reasons) if reco_reasons else "All underwriting checks passed successfully."
-
-        reco_details = {
-            "decision": reco_status,
-            "reasoning": reco_reasoning,
-            "citations": [m.get("clause_cited", "General Policy") for m in policy_res.get("matches", [])]
-        }
+        reco_details = reco_output.model_dump()
 
         # Save results in the database
         db = SessionLocal()
@@ -349,8 +310,8 @@ class WorkflowNodes:
                 # 2. Create Recommendation
                 recommendation_repo.create(db, obj_in={
                     "application_id": app_id,
-                    "decision": reco_status,
-                    "reasoning": reco_reasoning,
+                    "decision": reco_output.decision,
+                    "reasoning": "; ".join(reco_output.reasons),
                     "composite_score": score_res.get("composite_risk_score", 0.0),
                     "fairness_passed": None
                 })
