@@ -4,6 +4,7 @@ from typing import Dict, Any, List, Optional, Tuple
 from pydantic import BaseModel, Field
 from pypdf import PdfReader
 from backend.utils.logging import logger
+from backend.tools.ocr_processor import OCRProcessor
 
 # ================= Structured Pydantic Output Models =================
 
@@ -78,29 +79,60 @@ def normalize_date(date_str: Optional[str]) -> str:
 
 class DocumentParser:
     """
-    Handles file type detection and text extraction from PDFs.
+    Handles file type detection and text extraction from PDFs and Images.
     """
     @staticmethod
     def parse_pdf(file_path: str, document_type: str) -> ParsedDocument:
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
             
+        text = ""
+        page_count = 0
         try:
             reader = PdfReader(file_path)
-            text = ""
+            page_count = len(reader.pages)
             for page in reader.pages:
                 page_text = page.extract_text()
                 if page_text:
                     text += page_text + "\n"
-                    
+        except Exception as pdf_err:
+            logger.warning("Failed standard PDF extraction on %s: %s. Attempting OCR...", file_path, str(pdf_err))
+            
+        # If PDF text is empty/short or standard extraction failed, trigger OCR fallback
+        ocr_fallback_triggered = False
+        if len(text.strip()) < 10:
+            logger.info("PDF content is empty or scanned image. Triggering scanned PDF OCR fallback...")
+            try:
+                text = OCRProcessor.extract_text_from_pdf_pages(file_path)
+                ocr_fallback_triggered = True
+            except Exception as ocr_err:
+                logger.error("OCR fallback failed on %s: %s", file_path, str(ocr_err))
+                raise ValueError(f"Failed to extract text from PDF: standard parser and OCR both failed.")
+                
+        return ParsedDocument(
+            document_type=document_type,
+            extracted_text=text,
+            metadata={"file_name": os.path.basename(file_path), "page_count": page_count, "ocr_fallback": ocr_fallback_triggered}
+        )
+
+    @staticmethod
+    def parse_image(file_path: str, document_type: str) -> ParsedDocument:
+        """
+        Parses JPEG/PNG images using OCRProcessor.
+        """
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"File not found: {file_path}")
+            
+        try:
+            text = OCRProcessor.extract_text_from_image(file_path)
             return ParsedDocument(
                 document_type=document_type,
                 extracted_text=text,
-                metadata={"file_name": os.path.basename(file_path), "page_count": len(reader.pages)}
+                metadata={"file_name": os.path.basename(file_path), "parser": "pytesseract_ocr"}
             )
         except Exception as e:
-            logger.error("Failed to parse PDF %s: %s", file_path, str(e))
-            raise ValueError(f"Failed to extract text from PDF: {str(e)}")
+            logger.error("Failed to run OCR on image %s: %s", file_path, str(e))
+            raise ValueError(f"OCR parsing failed: {str(e)}")
 
 
 class DocumentValidator:
