@@ -4,30 +4,55 @@ services:
   backend:
     build:
       context: .
-      dockerfile: backend/Dockerfile
+      dockerfile: Dockerfile.backend
     container_name: credit_backend
     ports:
       - "8000:8000"
-    volumes:
-      - .:/app
     environment:
-      - ENV=development
-      - DEBUG=true
-      - DATABASE_URL=sqlite:///./credit_processing.db
+      - ENV=production
+      - DATABASE_URL=sqlite:////app/data/credit_processing.db
+      - CHROMA_DB_PATH=/app/data/chromadb
+      - KNOWLEDGE_BASE_DIR=/app/knowledge_base
+      - SECRET_KEY=prod_super_secure_secret_key_change_me_9988
+      - OPENAI_API_KEY=mock-key-for-development
+      - PORT=8000
+      - HOST=0.0.0.0
       - LOG_LEVEL=INFO
-    restart: always
+    volumes:
+      - app_data:/app/data
+      - app_uploads:/app/uploads
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - credit_network
 
   frontend:
     build:
       context: .
-      dockerfile: frontend/Dockerfile
+      dockerfile: Dockerfile.frontend
     container_name: credit_frontend
     ports:
       - "8501:8501"
-    volumes:
-      - .:/app
     environment:
-      - BACKEND_API_URL=http://backend:8000
+      - BACKEND_URL=http://backend:8000
     depends_on:
-      - backend
-    restart: always
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - credit_network
+
+volumes:
+  app_data:
+    driver: local
+  app_uploads:
+    driver: local
+
+networks:
+  credit_network:
+    driver: bridge
