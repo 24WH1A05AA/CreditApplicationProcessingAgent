@@ -2,9 +2,10 @@ import os
 import shutil
 import uvicorn
 from contextlib import asynccontextmanager
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from fastapi import FastAPI, Depends, HTTPException, status, Form, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 from backend.config import settings
@@ -16,7 +17,10 @@ from backend.models.schemas import (
     HumanDecisionCreate,
     Application as ApplicationSchema,
     Document as DocumentSchema,
-    Recommendation as RecommendationSchema
+    Recommendation as RecommendationSchema,
+    UserCreate,
+    UserResponse,
+    Token
 )
 from backend.database.repository import (
     applicant_repo,
@@ -25,10 +29,12 @@ from backend.database.repository import (
     policy_result_repo,
     recommendation_repo,
     human_decision_repo,
-    audit_log_repo
+    audit_log_repo,
+    user_repo
 )
 from backend.rag.pipeline import rag_pipeline
 from backend.agents.workflow import run_underwriting_workflow
+from backend.utils.auth import RoleChecker, get_password_hash, verify_password, create_access_token
 
 # Configure document uploads folder
 UPLOAD_DIR = "./uploads"
@@ -94,10 +100,55 @@ async def health_check():
     }
 
 
+# ================= Authentication Endpoints =================
+
+@app.post("/auth/register", response_model=UserResponse, tags=["Authentication"])
+async def register_user(user_in: UserCreate, db: Session = Depends(get_db)):
+    """
+    Registers a new system user with Role-based access control.
+    """
+    logger.info("Registering new user: %s with role: %s", user_in.username, user_in.role)
+    existing_user = user_repo.get_by_username(db, username=user_in.username)
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username already registered"
+        )
+    
+    hashed_pwd = get_password_hash(user_in.password)
+    db_user = user_repo.create(db, obj_in={
+        "username": user_in.username,
+        "hashed_password": hashed_pwd,
+        "role": user_in.role.upper()
+    })
+    return db_user
+
+@app.post("/auth/token", response_model=Token, tags=["Authentication"])
+async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    """
+    Validates user credentials and returns a signed JWT access token.
+    """
+    logger.info("Authenticating login request for user: %s", form_data.username)
+    user = user_repo.get_by_username(db, username=form_data.username)
+    if not user or not verify_password(form_data.password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    access_token = create_access_token(data={"sub": user.username, "role": user.role})
+    return {"access_token": access_token, "token_type": "bearer"}
+
+
 # ================= Application REST Endpoints =================
 
 @app.post("/applications", response_model=dict, tags=["Applications"])
-async def create_loan_application(app_in: ApplicationCreate, db: Session = Depends(get_db)):
+async def create_loan_application(
+    app_in: ApplicationCreate,
+    db: Session = Depends(get_db),
+    current_user: db_models.User = Depends(RoleChecker(["ADMIN", "UNDERWRITER"]))
+):
     """
     1. Upload Application details and registers applicant in database.
     """
@@ -138,7 +189,8 @@ async def upload_loan_documents(
     application_id: str,
     document_type: str = Form(..., description="PAN, Aadhaar, Salary Slip, Bank Statement"),
     file: UploadFile = File(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: db_models.User = Depends(RoleChecker(["ADMIN", "UNDERWRITER"]))
 ):
     """
     2. Upload Documents associated with application.
@@ -189,7 +241,11 @@ async def upload_loan_documents(
 
 
 @app.post("/applications/{application_id}/process", tags=["Processing"])
-async def process_loan_application(application_id: str, db: Session = Depends(get_db)):
+async def process_loan_application(
+    application_id: str,
+    db: Session = Depends(get_db),
+    current_user: db_models.User = Depends(RoleChecker(["ADMIN", "UNDERWRITER"]))
+):
     """
     3. Process Application - runs the compiled LangGraph workflow end-to-end.
     """
@@ -251,7 +307,11 @@ async def process_loan_application(application_id: str, db: Session = Depends(ge
 
 
 @app.get("/applications/{application_id}/recommendation", response_model=dict, tags=["Recommendations"])
-async def get_application_recommendation(application_id: str, db: Session = Depends(get_db)):
+async def get_application_recommendation(
+    application_id: str,
+    db: Session = Depends(get_db),
+    current_user: db_models.User = Depends(RoleChecker(["ADMIN", "UNDERWRITER", "AUDITOR"]))
+):
     """
     4. Recommendation details retrieval.
     """
@@ -271,7 +331,11 @@ async def get_application_recommendation(application_id: str, db: Session = Depe
 
 
 @app.post("/approval", tags=["Governance"])
-async def record_approval(decision_data: HumanDecisionCreate, db: Session = Depends(get_db)):
+async def record_approval(
+    decision_data: HumanDecisionCreate,
+    db: Session = Depends(get_db),
+    current_user: db_models.User = Depends(RoleChecker(["ADMIN", "UNDERWRITER"]))
+):
     """
     5. Human Approval governance submission.
     """
@@ -315,7 +379,11 @@ async def record_approval(decision_data: HumanDecisionCreate, db: Session = Depe
 
 
 @app.get("/audit/{application_id}", tags=["Audit"])
-async def get_audit(application_id: str, db: Session = Depends(get_db)):
+async def get_audit(
+    application_id: str,
+    db: Session = Depends(get_db),
+    current_user: db_models.User = Depends(RoleChecker(["ADMIN", "AUDITOR"]))
+):
     """
     6. Audit History session tracking.
     """
@@ -336,7 +404,11 @@ async def get_audit(application_id: str, db: Session = Depends(get_db)):
 
 
 @app.get("/applications/{application_id}", response_model=dict, tags=["Applications"])
-async def get_application_status(application_id: str, db: Session = Depends(get_db)):
+async def get_application_status(
+    application_id: str,
+    db: Session = Depends(get_db),
+    current_user: db_models.User = Depends(RoleChecker(["ADMIN", "UNDERWRITER", "AUDITOR"]))
+):
     """
     7. Application Status metadata query.
     """

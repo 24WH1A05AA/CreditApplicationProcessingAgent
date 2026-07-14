@@ -126,3 +126,13 @@ class AuditLog(Base):
 
     # Relationships
     application = relationship("Application", back_populates="audit_logs")
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    username = Column(String, unique=True, index=True, nullable=False)
+    hashed_password = Column(String, nullable=False)
+    role = Column(String, nullable=False)  # ADMIN, UNDERWRITER, AUDITOR
+    created_at = Column(DateTime, default=datetime.utcnow)

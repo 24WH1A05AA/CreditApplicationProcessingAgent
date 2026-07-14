@@ -8,7 +8,8 @@ from backend.models.db_models import (
     PolicyResult,
     Recommendation,
     HumanDecision,
-    AuditLog
+    AuditLog,
+    User
 )
 
 # Define Type Variables for Generic Repository
@@ -114,6 +115,14 @@ class AuditLogRepository(BaseRepository[AuditLog]):
         return db.query(self.model).filter(self.model.application_id == application_id).all()
 
 
+class UserRepository(BaseRepository[User]):
+    def __init__(self):
+        super().__init__(User)
+
+    def get_by_username(self, db: Session, username: str) -> Optional[User]:
+        return db.query(self.model).filter(self.model.username == username).first()
+
+
 # Global Singleton Instantiations
 applicant_repo = ApplicantRepository()
 application_repo = ApplicationRepository()
@@ -122,3 +131,4 @@ policy_result_repo = PolicyResultRepository()
 recommendation_repo = RecommendationRepository()
 human_decision_repo = HumanDecisionRepository()
 audit_log_repo = AuditLogRepository()
+user_repo = UserRepository()
