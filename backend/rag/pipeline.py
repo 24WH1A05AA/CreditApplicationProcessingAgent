@@ -27,8 +27,11 @@ class RAGPipeline:
             self.embeddings = FakeEmbeddings(size=1536)
         else:
             try:
-                logger.info("Using OpenAIEmbeddings for Chroma vector store")
-                self.embeddings = OpenAIEmbeddings(openai_api_key=settings.OPENAI_API_KEY)
+                logger.info("Using OpenAIEmbeddings (via OpenRouter) for Chroma vector store")
+                self.embeddings = OpenAIEmbeddings(
+                    openai_api_key=settings.OPENAI_API_KEY,
+                    openai_api_base=settings.OPENAI_API_BASE
+                )
             except Exception as e:
                 logger.error("Failed to initialize OpenAIEmbeddings: %s. Falling back to FakeEmbeddings.", str(e))
                 self.embeddings = FakeEmbeddings(size=1536)

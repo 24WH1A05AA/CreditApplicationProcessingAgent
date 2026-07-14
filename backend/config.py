@@ -17,9 +17,10 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = "sqlite:///./credit_processing.db"
 
-    # OpenAI & LLM
+    # OpenAI & LLM (Defaulting to OpenRouter Free Models)
     OPENAI_API_KEY: str = "mock-key-for-development"
-    OPENAI_MODEL: str = "gpt-4o"
+    OPENAI_MODEL: str = "meta-llama/llama-3-8b-instruct:free"
+    OPENAI_API_BASE: str = "https://openrouter.ai/api/v1"
 
     # RAG
     CHROMA_DB_PATH: str = "./data/chromadb"
