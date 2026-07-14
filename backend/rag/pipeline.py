@@ -26,8 +26,12 @@ class RAGPipeline:
             logger.info("Using FakeEmbeddings (size=1536) for Chroma vector store")
             self.embeddings = FakeEmbeddings(size=1536)
         else:
-            logger.info("Using OpenAIEmbeddings for Chroma vector store")
-            self.embeddings = OpenAIEmbeddings(openai_api_key=settings.OPENAI_API_KEY)
+            try:
+                logger.info("Using OpenAIEmbeddings for Chroma vector store")
+                self.embeddings = OpenAIEmbeddings(openai_api_key=settings.OPENAI_API_KEY)
+            except Exception as e:
+                logger.error("Failed to initialize OpenAIEmbeddings: %s. Falling back to FakeEmbeddings.", str(e))
+                self.embeddings = FakeEmbeddings(size=1536)
 
     def load_documents(self) -> List[Dict[str, Any]]:
         """
@@ -122,8 +126,8 @@ class RAGPipeline:
             )
             logger.info("ChromaDB vector store initialized and persisted successfully at %s.", settings.CHROMA_DB_PATH)
         except Exception as e:
-            logger.error("Failed to initialize Chroma vector store: %s", str(e))
-            raise e
+            logger.critical("Failed to initialize Chroma vector store: %s. System will run in keyword-fallback mode.", str(e))
+            self.vector_db = None
 
     def retrieve(self, query: str, k: int = 3) -> List[Dict[str, Any]]:
         """

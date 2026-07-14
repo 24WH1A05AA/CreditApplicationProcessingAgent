@@ -4,9 +4,11 @@ import uvicorn
 from contextlib import asynccontextmanager
 from typing import Dict, Any, List, Optional
 from fastapi import FastAPI, Depends, HTTPException, status, Form, File, UploadFile
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 
 from backend.config import settings
 from backend.utils.logging import logger
@@ -86,6 +88,48 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ================= Global Exception Handlers =================
+
+@app.exception_handler(SQLAlchemyError)
+async def sqlalchemy_exception_handler(request, exc):
+    logger.error("Database Error encountered: %s", str(exc))
+    return JSONResponse(
+        status_code=500,
+        content={
+            "status": "error",
+            "error_type": "DATABASE_ERROR",
+            "message": "A database persistence error occurred while processing this request.",
+            "detail": str(exc)
+        }
+    )
+
+@app.exception_handler(FileNotFoundError)
+async def file_not_found_exception_handler(request, exc):
+    logger.error("File Not Found: %s", str(exc))
+    return JSONResponse(
+        status_code=404,
+        content={
+            "status": "error",
+            "error_type": "FILE_NOT_FOUND",
+            "message": "The requested file or document could not be located on disk.",
+            "detail": str(exc)
+        }
+    )
+
+@app.exception_handler(ValueError)
+async def value_error_exception_handler(request, exc):
+    logger.error("Value Error encountered: %s", str(exc))
+    return JSONResponse(
+        status_code=400,
+        content={
+            "status": "error",
+            "error_type": "VALIDATION_ERROR",
+            "message": "An invalid parameter or data validation error occurred.",
+            "detail": str(exc)
+        }
+    )
 
 
 # ================= System Endpoints =================
