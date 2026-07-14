@@ -36,32 +36,59 @@ class OCRProcessor:
         # Fallback Mode: generate mock output based on filename if Tesseract is missing
         if not TESSERACT_AVAILABLE:
             logger.info("OCR execution (mock fallback) for: %s", filename)
+            
+            # Dynamic lookup based on application_id in filename
+            applicant_name = "JANE DOE"
+            applicant_dob = "15/05/1990"
+            parts = os.path.basename(file_path).split("_")
+            if len(parts) >= 2:
+                app_id = parts[0]
+                from backend.database.session import SessionLocal
+                from backend.database.repository import application_repo, applicant_repo
+                db = SessionLocal()
+                try:
+                    application = application_repo.get(db, app_id)
+                    if application:
+                        db_applicant = applicant_repo.get(db, application.applicant_id)
+                        if db_applicant:
+                            applicant_name = f"{db_applicant.first_name} {db_applicant.last_name}".upper()
+                            # Convert YYYY-MM-DD to DD/MM/YYYY
+                            dob_parts = db_applicant.dob.split("-")
+                            if len(dob_parts) == 3:
+                                applicant_dob = f"{dob_parts[2]}/{dob_parts[1]}/{dob_parts[0]}"
+                            else:
+                                applicant_dob = db_applicant.dob
+                except Exception:
+                    pass
+                finally:
+                    db.close()
+
             if "pan" in filename:
-                return """
+                return f"""
                 INCOME TAX DEPARTMENT
                 GOVERNMENT OF INDIA
-                NAME: JANE DOE
-                DOB: 15/05/1990
+                NAME: {applicant_name}
+                DOB: {applicant_dob}
                 PAN: ABCDE1234F
                 """
             elif "aadhaar" in filename or "adhar" in filename:
-                return """
+                return f"""
                 GOVERNMENT OF INDIA
-                JANE DOE
-                DOB: 15/05/1990
-                GENDER: FEMALE
+                {applicant_name}
+                DOB: {applicant_dob}
+                GENDER: MALE
                 Aadhaar Number: 1234 5678 9012
                 """
             elif "salary" in filename or "slip" in filename:
-                return """
+                return f"""
                 ACME CORP SERVICES PAYSLIP
-                EMPLOYEE NAME: JANE DOE
+                EMPLOYEE NAME: {applicant_name}
                 BASIC SALARY: 50,000
                 NET PAY: 75,000 INR
                 DEDUCTIONS: 5,000
                 """
             elif "bank" in filename or "statement" in filename:
-                return """
+                return f"""
                 HDFC BANK STATEMENT
                 ACCOUNT NO: 12345678
                 AVERAGE BALANCE: 120,000 INR
