@@ -12,6 +12,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from backend.config import settings
 from backend.utils.logging import logger
+from backend.utils.observability import ObservabilityManager
 from backend.database.session import Base, engine, get_db
 from backend.models import db_models
 from backend.models.schemas import (
@@ -371,6 +372,44 @@ async def get_application_recommendation(
         "composite_score": reco.composite_score,
         "fairness_passed": reco.fairness_passed,
         "created_at": str(reco.created_at)
+    }
+
+
+@app.get("/applications/{application_id}/observability", tags=["Observability"])
+async def get_application_observability(
+    application_id: str,
+    db: Session = Depends(get_db),
+    current_user: db_models.User = Depends(RoleChecker(["ADMIN", "UNDERWRITER", "AUDITOR"]))
+):
+    """
+    Retrieves execution traces, timings, token usage, and a Mermaid chart for the agent's workflow.
+    """
+    logger.info("REST: Fetching observability metrics for application %s", application_id)
+    
+    # Query database for WORKFLOW_EXECUTION audit log
+    logs = audit_log_repo.get_by_application(db, application_id)
+    wf_log = next((log for log in logs if log.action == "WORKFLOW_EXECUTION"), None)
+    
+    if not wf_log:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Observability metrics not found for application {application_id}. Run analysis first."
+        )
+        
+    details = wf_log.details or {}
+    meta = details.get("metadata", {})
+    execution_path = meta.get("execution_path", [])
+    
+    # Generate flowchart
+    mermaid_graph = ObservabilityManager.generate_mermaid_flowchart(execution_path)
+    
+    return {
+        "application_id": application_id,
+        "execution_path": execution_path,
+        "node_timings_ms": meta.get("node_timings", {}),
+        "total_latency_ms": sum(meta.get("node_timings", {}).values()),
+        "token_usage": meta.get("token_usage", {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}),
+        "mermaid_chart": mermaid_graph
     }
 
 

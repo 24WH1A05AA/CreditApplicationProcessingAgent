@@ -17,6 +17,8 @@ from backend.database.repository import (
 )
 from backend.models.db_models import Document, Application
 from backend.utils.logging import logger
+import time
+from backend.utils.observability import ObservabilityManager
 
 class WorkflowNodes:
     """
@@ -30,6 +32,7 @@ class WorkflowNodes:
         Node 1: Loan Intake
         Creates/retrieves applicant and application in DB, associates documents, and updates state IDs.
         """
+        start_t = time.time()
         logger.info("LangGraph Node: Executing Loan Intake...")
         app_data = state["applicant"]
         docs_list = state.get("documents", [])
@@ -80,9 +83,21 @@ class WorkflowNodes:
             # Update the applicant dict in state to store generated IDs
             updated_applicant = {**app_data, "id": db_applicant.id, "application_id": db_application.id}
             
+            elapsed = (time.time() - start_t) * 1000.0
+            meta = {**state.get("metadata", {})}
+            meta["intake_completed"] = True
+            
+            timings = dict(meta.get("node_timings", {}))
+            timings["loan_intake_node"] = round(elapsed, 2)
+            meta["node_timings"] = timings
+            
+            path = list(meta.get("execution_path", []))
+            path.append("loan_intake_node")
+            meta["execution_path"] = path
+
             return {
                 "applicant": updated_applicant,
-                "metadata": {**state.get("metadata", {}), "intake_completed": True}
+                "metadata": meta
             }
         except Exception as e:
             logger.error("Failed in Loan Intake node: %s", str(e))
@@ -96,6 +111,7 @@ class WorkflowNodes:
         Node 2: Document Validation
         Performs OCR/parsing extraction, validate fields, and cross-checks documents.
         """
+        start_t = time.time()
         logger.info("LangGraph Node: Executing Document Validation...")
         docs_list = state.get("documents", [])
         applicant_data = state["applicant"]
@@ -185,7 +201,21 @@ class WorkflowNodes:
         finally:
             db.close()
 
-        return {"validation_result": validation_results}
+        elapsed = (time.time() - start_t) * 1000.0
+        meta = {**state.get("metadata", {})}
+        
+        timings = dict(meta.get("node_timings", {}))
+        timings["document_validation_node"] = round(elapsed, 2)
+        meta["node_timings"] = timings
+        
+        path = list(meta.get("execution_path", []))
+        path.append("document_validation_node")
+        meta["execution_path"] = path
+
+        return {
+            "validation_result": validation_results,
+            "metadata": meta
+        }
 
     @staticmethod
     def policy_retrieval(state: UnderwritingState) -> Dict[str, Any]:
@@ -193,6 +223,7 @@ class WorkflowNodes:
         Node 3: Policy Retrieval
         Retrieves matching underwriting clauses and citations via the RAG pipeline.
         """
+        start_t = time.time()
         logger.info("LangGraph Node: Executing Policy Retrieval...")
         score_data = state.get("score") or {}
         applicant_data = state["applicant"]
@@ -216,7 +247,32 @@ class WorkflowNodes:
             has_active_defaults=has_defaults
         )
 
-        return {"retrieved_policy": policy_eval.model_dump()}
+        elapsed = (time.time() - start_t) * 1000.0
+        meta = {**state.get("metadata", {})}
+        
+        timings = dict(meta.get("node_timings", {}))
+        timings["policy_retrieval_node"] = round(elapsed, 2)
+        meta["node_timings"] = timings
+        
+        path = list(meta.get("execution_path", []))
+        path.append("policy_retrieval_node")
+        meta["execution_path"] = path
+
+        # Estimate RAG Token Usage
+        query_text = "bureau credit score limits DTI ratio limits minimum income requirements active defaults"
+        retrieved_text = "".join([m.policy_text for m in policy_eval.matches])
+        input_tokens = len(query_text) // 4
+        output_tokens = len(retrieved_text) // 4
+        meta["token_usage"] = {
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "total_tokens": input_tokens + output_tokens
+        }
+
+        return {
+            "retrieved_policy": policy_eval.model_dump(),
+            "metadata": meta
+        }
 
     @staticmethod
     def credit_scoring(state: UnderwritingState) -> Dict[str, Any]:
@@ -224,6 +280,7 @@ class WorkflowNodes:
         Node 4: Credit Scoring
         Fetches bureau scores, computes DTI ratios and the composite risk score.
         """
+        start_t = time.time()
         logger.info("LangGraph Node: Executing Credit Scoring...")
         applicant_data = state["applicant"]
         
@@ -279,7 +336,21 @@ class WorkflowNodes:
         finally:
             db.close()
 
-        return {"score": score_details}
+        elapsed = (time.time() - start_t) * 1000.0
+        meta = {**state.get("metadata", {})}
+        
+        timings = dict(meta.get("node_timings", {}))
+        timings["credit_scoring_node"] = round(elapsed, 2)
+        meta["node_timings"] = timings
+        
+        path = list(meta.get("execution_path", []))
+        path.append("credit_scoring_node")
+        meta["execution_path"] = path
+
+        return {
+            "score": score_details,
+            "metadata": meta
+        }
 
     @staticmethod
     def recommendation(state: UnderwritingState) -> Dict[str, Any]:
@@ -287,6 +358,7 @@ class WorkflowNodes:
         Node 5: Recommendation Generation
         Synthesizes validation results, scoring details, and policies to recommend APPROVE/DECLINE/REFER.
         """
+        start_t = time.time()
         logger.info("LangGraph Node: Executing Recommendation...")
         val_res = state.get("validation_result") or {}
         score_res = state.get("score") or {}
@@ -336,7 +408,21 @@ class WorkflowNodes:
         finally:
             db.close()
 
-        return {"recommendation": reco_details}
+        elapsed = (time.time() - start_t) * 1000.0
+        meta = {**state.get("metadata", {})}
+        
+        timings = dict(meta.get("node_timings", {}))
+        timings["recommendation_node"] = round(elapsed, 2)
+        meta["node_timings"] = timings
+        
+        path = list(meta.get("execution_path", []))
+        path.append("recommendation_node")
+        meta["execution_path"] = path
+
+        return {
+            "recommendation": reco_details,
+            "metadata": meta
+        }
 
     @staticmethod
     def fairness_check(state: UnderwritingState) -> Dict[str, Any]:
@@ -344,6 +430,7 @@ class WorkflowNodes:
         Node 6: Fairness Check
         Validates decision parity using demographic-blind parameter checks.
         """
+        start_t = time.time()
         logger.info("LangGraph Node: Executing Fairness Check...")
         score_res = state.get("score") or {}
         reco_res = state.get("recommendation") or {}
@@ -374,7 +461,21 @@ class WorkflowNodes:
         finally:
             db.close()
 
-        return {"fairness_result": fairness_details}
+        elapsed = (time.time() - start_t) * 1000.0
+        meta = {**state.get("metadata", {})}
+        
+        timings = dict(meta.get("node_timings", {}))
+        timings["fairness_check_node"] = round(elapsed, 2)
+        meta["node_timings"] = timings
+        
+        path = list(meta.get("execution_path", []))
+        path.append("fairness_check_node")
+        meta["execution_path"] = path
+
+        return {
+            "fairness_result": fairness_details,
+            "metadata": meta
+        }
 
     @staticmethod
     def human_approval(state: UnderwritingState) -> Dict[str, Any]:
@@ -382,6 +483,7 @@ class WorkflowNodes:
         Node 7: Human Approval
         Transition state handler for manual review referrals.
         """
+        start_t = time.time()
         logger.info("LangGraph Node: Executing Human Approval (check referral status)...")
         reco_res = state.get("recommendation") or {}
         decision = reco_res.get("decision", "REFER")
@@ -418,7 +520,21 @@ class WorkflowNodes:
         finally:
             db.close()
 
-        return {"human_approval": human_app}
+        elapsed = (time.time() - start_t) * 1000.0
+        meta = {**state.get("metadata", {})}
+        
+        timings = dict(meta.get("node_timings", {}))
+        timings["human_approval_node"] = round(elapsed, 2)
+        meta["node_timings"] = timings
+        
+        path = list(meta.get("execution_path", []))
+        path.append("human_approval_node")
+        meta["execution_path"] = path
+
+        return {
+            "human_approval": human_app,
+            "metadata": meta
+        }
 
     @staticmethod
     def audit_logging(state: UnderwritingState) -> Dict[str, Any]:
@@ -426,9 +542,21 @@ class WorkflowNodes:
         Node 8: Audit Logging
         Generates and saves a complete workflow execution trace in the database.
         """
+        start_t = time.time()
         logger.info("LangGraph Node: Executing Audit Logging...")
         applicant_data = state["applicant"]
         app_id = applicant_data.get("application_id")
+
+        meta = {**state.get("metadata", {})}
+        
+        elapsed = (time.time() - start_t) * 1000.0
+        timings = dict(meta.get("node_timings", {}))
+        timings["audit_logging_node"] = round(elapsed, 2)
+        meta["node_timings"] = timings
+        
+        path = list(meta.get("execution_path", []))
+        path.append("audit_logging_node")
+        meta["execution_path"] = path
 
         # Compile complete state trace for absolute auditability
         complete_trace = {
@@ -440,6 +568,7 @@ class WorkflowNodes:
             "recommendation": state.get("recommendation"),
             "fairness_result": state.get("fairness_result"),
             "human_approval": state.get("human_approval"),
+            "metadata": meta,
             "tool_calls": [
                 "DocumentParser",
                 "DocumentValidator",
@@ -450,6 +579,9 @@ class WorkflowNodes:
                 "FairnessChecker"
             ]
         }
+
+        # Store debug trace on disk
+        ObservabilityManager.save_debug_trace(app_id, complete_trace)
 
         db = SessionLocal()
         try:
@@ -466,9 +598,9 @@ class WorkflowNodes:
                 "performed_by": "LANGGRAPH_ENGINE",
                 "timestamp": str(db_log.timestamp)
             }
-            return {"audit_data": audit_details}
+            return {"audit_data": audit_details, "metadata": meta}
         except Exception as dbe:
             logger.error("Audit log database write failed: %s", str(dbe))
-            return {"audit_data": {"action": "WORKFLOW_EXECUTION", "status": "LOG_WRITE_FAILED"}}
+            return {"audit_data": {"action": "WORKFLOW_EXECUTION", "status": "LOG_WRITE_FAILED"}, "metadata": meta}
         finally:
             db.close()

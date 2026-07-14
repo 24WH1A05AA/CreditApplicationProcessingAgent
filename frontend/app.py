@@ -446,6 +446,44 @@ elif menu == "Recommendation":
                             st.write(reco_det.get("citations", ["General Policy"]))
                     else:
                         st.info("Audit logs unavailable.")
+                        
+                st.markdown("---")
+                st.markdown("### 🔍 Agent Observability & Telemetry Traces")
+                
+                # Fetch observability details
+                r_obs = requests.get(f"{BACKEND_URL}/applications/{app_id}/observability")
+                if r_obs.status_code == 200:
+                    obs_data = r_obs.json()
+                    
+                    # Display timing and token usage in columns
+                    ocol1, ocol2, ocol3 = st.columns(3)
+                    with ocol1:
+                        st.metric("Total Latency", f"{obs_data.get('total_latency_ms', 0.0):.2f} ms")
+                    with ocol2:
+                        st.metric("Estimated Tokens", f"{obs_data.get('token_usage', {}).get('total_tokens', 0)} tokens")
+                    with ocol3:
+                        st.metric("Steps Executed", f"{len(obs_data.get('execution_path', []))}/8 steps")
+                        
+                    # Show node timings table/dictionary
+                    with st.expander("⏱️ Node-by-Node Latency Metrics"):
+                        st.json(obs_data.get("node_timings_ms", {}))
+                        
+                    # Show Mermaid Graph Visualization
+                    st.markdown("#### 🗺️ Agent Execution Path Visualization")
+                    html_code = f"""
+                    <div style="background-color: #0f172a; border-radius: 8px; padding: 15px; border: 1px solid #1e293b; display: flex; justify-content: center;">
+                        <pre class="mermaid" style="background: transparent; border: none; font-family: inherit;">
+                        {obs_data.get('mermaid_chart')}
+                        </pre>
+                    </div>
+                    <script type="module">
+                        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+                        mermaid.initialize({{ startOnLoad: true, theme: 'dark' }});
+                    </script>
+                    """
+                    st.components.v1.html(html_code, height=450)
+                else:
+                    st.info("Run analysis first to view agent execution traces and timings.")
         except Exception as e:
             st.error(f"Error loading details: {str(e)}")
 
