@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, ConfigDict
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
@@ -18,8 +18,7 @@ class Applicant(ApplicantBase):
     id: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ================= Document Schemas =================
@@ -37,8 +36,7 @@ class Document(DocumentBase):
     validation_result: Optional[Dict[str, Any]] = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ================= PolicyResult Schemas =================
@@ -53,8 +51,7 @@ class PolicyResult(PolicyResultBase):
     application_id: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ================= Recommendation Schemas =================
@@ -69,8 +66,7 @@ class Recommendation(RecommendationBase):
     application_id: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ================= HumanDecision Schemas =================
@@ -87,8 +83,7 @@ class HumanDecision(HumanDecisionBase):
     application_id: str
     timestamp: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ================= AuditLog Schemas =================
@@ -102,8 +97,7 @@ class AuditLog(AuditLogBase):
     application_id: Optional[str] = None
     timestamp: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ================= Application Schemas =================
@@ -130,8 +124,7 @@ class Application(ApplicationBase):
     recommendations: List[Recommendation] = []
     human_decisions: List[HumanDecision] = []
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ================= Authentication Schemas =================
@@ -146,8 +139,7 @@ class UserResponse(BaseModel):
     role: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class Token(BaseModel):
     access_token: str
