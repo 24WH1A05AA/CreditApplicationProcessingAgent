@@ -486,6 +486,39 @@ async def get_audit(
     }
 
 
+@app.get("/applications", response_model=List[dict], tags=["Applications"])
+async def list_loan_applications(
+    db: Session = Depends(get_db),
+    current_user: db_models.User = Depends(RoleChecker(["ADMIN", "UNDERWRITER", "AUDITOR"]))
+):
+    """
+    List all loan applications in the system.
+    """
+    logger.info("REST: Fetching all loan applications")
+    apps = application_repo.get_multi(db, limit=100)
+    result = []
+    for app in apps:
+        db_applicant = applicant_repo.get(db, app.applicant_id)
+        result.append({
+            "id": app.id,
+            "loan_amount": app.loan_amount,
+            "loan_purpose": app.loan_purpose,
+            "status": app.status,
+            "credit_score": app.credit_score,
+            "dti_ratio": app.dti_ratio,
+            "created_at": str(app.created_at),
+            "updated_at": str(app.updated_at),
+            "applicant": {
+                "first_name": db_applicant.first_name if db_applicant else "",
+                "last_name": db_applicant.last_name if db_applicant else "",
+                "email": db_applicant.email if db_applicant else "",
+                "monthly_income": db_applicant.monthly_income if db_applicant else 0.0,
+                "existing_emi": db_applicant.existing_emi if db_applicant else 0.0
+            }
+        })
+    return result
+
+
 @app.get("/applications/{application_id}", response_model=dict, tags=["Applications"])
 async def get_application_status(
     application_id: str,

@@ -1,10 +1,16 @@
+import sys
+import os
+
+# Ensure the project root is on sys.path so `backend` is importable
+# regardless of which directory Streamlit is launched from
+_project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
+
 import streamlit as st
 import requests
-import os
 import shutil
 from typing import List, Dict, Any
-from backend.database.session import SessionLocal
-from backend.database.repository import application_repo
 
 # Backend URL configuration
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
@@ -118,15 +124,15 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Initialize Session State
+# Initialize Session State dynamically via API
 if "applications" not in st.session_state:
-    db = SessionLocal()
+    st.session_state.applications = []
     try:
-        all_apps = application_repo.get_multi(db, limit=100)
-        st.session_state.applications = [app.id for app in all_apps]
+        r = requests.get(f"{BACKEND_URL}/applications")
+        if r.status_code == 200:
+            st.session_state.applications = [app["id"] for app in r.json()]
     except Exception:
-        st.session_state.applications = []
-    finally:
-        db.close()
+        pass
 
 if "selected_app_id" not in st.session_state:
     st.session_state.selected_app_id = st.session_state.applications[0] if st.session_state.applications else ""
@@ -151,9 +157,19 @@ with st.sidebar:
     
     st.markdown("---")
     
+    # Refresh applications list from API dynamically to keep context selector in sync
+    try:
+        r = requests.get(f"{BACKEND_URL}/applications")
+        if r.status_code == 200:
+            st.session_state.applications = [app["id"] for app in r.json()]
+    except Exception:
+        pass
+
     # Active Application Selector
     if st.session_state.applications:
         st.subheader("Active Context")
+        if st.session_state.selected_app_id not in st.session_state.applications:
+            st.session_state.selected_app_id = st.session_state.applications[0]
         selected_id = st.selectbox(
             "Select Application",
             st.session_state.applications,
@@ -165,8 +181,19 @@ with st.sidebar:
 
     st.markdown("---")
     st.markdown("### System Status")
-    st.markdown("🟢 **Backend API:** Online")
-    st.markdown("🟢 **Database:** SQLite Connected")
+    
+    # Query Backend API Health
+    try:
+        r_health = requests.get(f"{BACKEND_URL}/health", timeout=2)
+        if r_health.status_code == 200:
+            st.markdown("🟢 **Backend API:** Online")
+            st.markdown("🟢 **Database:** SQLite Connected")
+        else:
+            st.markdown("🔴 **Backend API:** Error Response")
+            st.markdown("🔴 **Database:** Status Error")
+    except Exception:
+        st.markdown("🔴 **Backend API:** Offline")
+        st.markdown("🔴 **Database:** Disconnected")
 
 
 # ================= Navigation Pages =================
@@ -182,22 +209,21 @@ if menu == "Dashboard":
     approved_count = 0
     declined_count = 0
     
-    for app_id in st.session_state.applications:
-        try:
-            r = requests.get(f"{BACKEND_URL}/applications/{app_id}")
-            if r.status_code == 200:
-                det = r.json()
-                app_details_list.append(det)
-                total_count += 1
+    try:
+        r = requests.get(f"{BACKEND_URL}/applications")
+        if r.status_code == 200:
+            app_details_list = r.json()
+            total_count = len(app_details_list)
+            for det in app_details_list:
                 status = det.get("status", "INTAKE").upper()
-                if status == "REFER":
+                if status == "REFER" or status == "PENDING_APPROVAL":
                     pending_count += 1
-                elif status == "APPROVED":
+                elif status == "APPROVED" or status == "APPROVED":
                     approved_count += 1
-                elif status == "DECLINED":
+                elif status == "DECLINED" or status == "DECLINED":
                     declined_count += 1
-        except Exception:
-            pass
+    except Exception as e:
+        st.error(f"Failed to fetch application queue: {str(e)}")
 
     # Grid Layout for metrics
     col1, col2, col3, col4 = st.columns(4)
