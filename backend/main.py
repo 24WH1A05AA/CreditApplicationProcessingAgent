@@ -495,7 +495,7 @@ async def list_loan_applications(
     List all loan applications in the system.
     """
     logger.info("REST: Fetching all loan applications")
-    apps = application_repo.get_multi(db, limit=100)
+    apps = db.query(db_models.Application).order_by(db_models.Application.created_at.desc()).limit(100).all()
     result = []
     for app in apps:
         db_applicant = applicant_repo.get(db, app.applicant_id)
