@@ -1,0 +1,13 @@
+{
+    "loan_amount": 120000.0,
+    "loan_purpose": "Debt Consolidation",
+    "applicant": {
+        "first_name": "Joffrey",
+        "last_name": "Baratheon",
+        "email": "default@example.com",
+        "phone": "9999955555",
+        "dob": "1995-10-10",
+        "monthly_income": 80000.0,
+        "existing_emi": 2000.0
+    }
+}

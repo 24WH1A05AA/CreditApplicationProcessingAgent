@@ -1,0 +1,13 @@
+{
+    "loan_amount": 100000.0,
+    "loan_purpose": "Car Loan",
+    "applicant": {
+        "first_name": "Loki",
+        "last_name": "Laufeyson",
+        "email": "declined.lowscore@example.com",
+        "phone": "9999944444",
+        "dob": "1992-06-06",
+        "monthly_income": 40000.0,
+        "existing_emi": 1000.0
+    }
+}

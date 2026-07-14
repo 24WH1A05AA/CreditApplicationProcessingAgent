@@ -1,0 +1,13 @@
+{
+    "loan_amount": 350000.0,
+    "loan_purpose": "Personal Loan",
+    "applicant": {
+        "first_name": "Nancy",
+        "last_name": "Wheeler",
+        "email": "borderline.refer@example.com",
+        "phone": "9999911111",
+        "dob": "1994-03-12",
+        "monthly_income": 50000.0,
+        "existing_emi": 0.0
+    }
+}
