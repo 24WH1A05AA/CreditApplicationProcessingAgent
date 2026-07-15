@@ -1,5 +1,4 @@
 import streamlit as st
-import textwrap
 
 def draw_kpi_card(title, value, subtitle, icon, trend_pct=None, sparkline_svg=None, is_positive=True):
     """
@@ -13,43 +12,13 @@ def draw_kpi_card(title, value, subtitle, icon, trend_pct=None, sparkline_svg=No
     if not sparkline_svg:
         points = "0,15 15,10 30,18 45,5 60,12 75,3 90,8 100,2" if is_positive else "0,5 15,15 30,8 45,18 60,10 75,16 90,12 100,18"
         line_color = "#818CF8" if is_positive else "#F87171"
-        sparkline_svg = f"""
-        <svg class="sparkline" width="90" height="24" style="stroke: {line_color}; fill: none; stroke-width: 1.5; stroke-linecap: round; filter: drop-shadow(0px 1px 2px rgba(0,0,0,0.3));">
-            <polyline points="{points}"/>
-        </svg>
-        """
+        sparkline_svg = f'<svg class="sparkline" width="90" height="24" style="stroke: {line_color}; fill: none; stroke-width: 1.5; stroke-linecap: round; filter: drop-shadow(0px 1px 2px rgba(0,0,0,0.3));"><polyline points="{points}"/></svg>'
+    else:
+        sparkline_svg = sparkline_svg.replace("\n", " ").strip()
         
-    card_html = f"""<div style="
-        background: rgba(30, 41, 59, 0.4);
-        backdrop-filter: blur(12px);
-        -webkit-backdrop-filter: blur(12px);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 12px;
-        padding: 16px 20px;
-        box-shadow: 0 4px 20px 0 rgba(0, 0, 0, 0.15);
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-        min-height: 140px;
-        transition: transform 0.2s ease, border-color 0.2s ease;
-    ">
-        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-            <span style="color: #94A3B8; font-size: 0.82rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em;">{title}</span>
-            <span style="font-size: 1.4rem; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15));">{icon}</span>
-        </div>
-        <div style="margin-top: 8px; margin-bottom: 4px;">
-            <span style="font-size: 1.85rem; font-weight: 700; background: linear-gradient(135deg, #F8FAFC 0%, #CBD5E1 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">{value}</span>
-        </div>
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: auto; padding-top: 4px;">
-            <div style="display: flex; flex-direction: column;">
-                <span style="font-size: 0.72rem; color: #64748B;">{trend_html}{subtitle}</span>
-            </div>
-            <div>
-                {sparkline_svg}
-            </div>
-        </div>
-    </div>"""
-    st.markdown(textwrap.dedent(card_html), unsafe_allow_html=True)
+    card_html = f'<div style="background: rgba(30, 41, 59, 0.4); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 16px 20px; box-shadow: 0 4px 20px 0 rgba(0, 0, 0, 0.15); display: flex; flex-direction: column; justify-content: space-between; min-height: 140px; transition: transform 0.2s ease, border-color 0.2s ease;"><div style="display: flex; justify-content: space-between; align-items: flex-start;"><span style="color: #94A3B8; font-size: 0.82rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em;">{title}</span><span style="font-size: 1.4rem; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15));">{icon}</span></div><div style="margin-top: 8px; margin-bottom: 4px;"><span style="font-size: 1.85rem; font-weight: 700; background: linear-gradient(135deg, #F8FAFC 0%, #CBD5E1 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">{value}</span></div><div style="display: flex; justify-content: space-between; align-items: center; margin-top: auto; padding-top: 4px;"><div style="display: flex; flex-direction: column;"><span style="font-size: 0.72rem; color: #64748B;">{trend_html}{subtitle}</span></div><div>{sparkline_svg}</div></div></div>'
+    
+    st.markdown(card_html, unsafe_allow_html=True)
 
 def render_kpis_grid(data):
     """
