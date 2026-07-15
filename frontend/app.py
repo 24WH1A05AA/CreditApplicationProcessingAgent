@@ -10,6 +10,8 @@ if _project_root not in sys.path:
 import streamlit as st
 import requests
 import shutil
+import pandas as pd
+import frontend.dashboard_components as db_comp
 from typing import List, Dict, Any
 
 # Backend URL configuration
@@ -151,7 +153,8 @@ with st.sidebar:
             "Upload Documents",
             "Recommendation",
             "Approval Gate",
-            "Audit History"
+            "Audit History",
+            "Evaluation Dashboard"
         ]
     )
     
@@ -614,3 +617,155 @@ elif menu == "Audit History":
                 st.error("Failed to fetch audit logs.")
         except Exception as e:
             st.error(f"Connection failure: {str(e)}")
+
+
+elif menu == "Evaluation Dashboard":
+    st.markdown("# 📈 Enterprise Evaluation & Governance Dashboard")
+    st.markdown("Real-time AI telemetry, model governance, and trace evaluations.")
+    
+    # 1. Query dashboard aggregate data
+    try:
+        r = requests.get(f"{BACKEND_URL}/evaluation/dashboard-data")
+        if r.status_code == 200:
+            data = r.json()
+            
+            # --- 1. HEADER SECTION ---
+            col_h1, col_h2, col_h3 = st.columns([2, 1, 1])
+            with col_h1:
+                st.markdown(f"🤖 **Model:** `gpt-4o` | **Engine:** `LangGraph 2.0` | **Version:** `1.0.0` | **Env:** `Development Sandbox`")
+            with col_h2:
+                st.write(f"🕒 **System Time:** {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            with col_h3:
+                if st.button("🔄 Refresh Data", key="dash_refresh"):
+                    st.rerun()
+                    
+            st.markdown("---")
+            
+            # --- 2. KPI GRID ---
+            db_comp.render_kpis_grid(data)
+            st.markdown("---")
+            
+            # --- 3. WORKSPACE TABS ---
+            tab1, tab2, tab3, tab4, tab5 = st.tabs([
+                "📊 Performance & Load", 
+                "🧠 AI Evaluation & RAG", 
+                "🔍 Agent Tracing & Validation", 
+                "🧑‍✈️ Governance & Compliance", 
+                "📋 Applications Queue"
+            ])
+            
+            with tab1:
+                col_c1, col_c2 = st.columns(2)
+                with col_c1:
+                    st.markdown("#### Application Status Share")
+                    status_pie = db_comp.render_application_status_pie(data)
+                    st.plotly_chart(status_pie, use_container_width=True)
+                with col_c2:
+                    st.markdown("#### Turnaround Time Latency (TAT)")
+                    tat_line = db_comp.render_turnaround_time_line(data)
+                    if tat_line:
+                        st.plotly_chart(tat_line, use_container_width=True)
+                    else:
+                        st.info("No turnaround data to plot.")
+                    
+                col_c3, col_c4 = st.columns(2)
+                with col_c3:
+                    st.markdown("#### Submissions Over Time")
+                    time_area = db_comp.render_applications_over_time(data)
+                    st.plotly_chart(time_area, use_container_width=True)
+                with col_c4:
+                    st.markdown("#### Hourly Load Distribution")
+                    hour_bar = db_comp.render_applications_per_hour(data)
+                    st.plotly_chart(hour_bar, use_container_width=True)
+                    
+                col_sys1, col_sys2, col_sys3 = st.columns(3)
+                with col_sys1:
+                    cpu_gauge = db_comp.render_system_perf_gauge(data["system_performance"]["cpu_usage_percent"], "CPU Usage")
+                    st.plotly_chart(cpu_gauge, use_container_width=True)
+                with col_sys2:
+                    mem_gauge = db_comp.render_system_perf_gauge(data["system_performance"]["memory_usage_percent"], "Memory Usage", color='#10B981')
+                    st.plotly_chart(mem_gauge, use_container_width=True)
+                with col_sys3:
+                    st.markdown("#### System Database Metrics")
+                    st.write(f"⚙️ **Vector DB Latency:** `{data['system_performance']['vector_db_latency_ms']} ms`")
+                    st.write(f"⏱️ **API Avg Latency:** `{data['system_performance']['api_response_time_ms']} ms`")
+                    st.write(f"🔍 **Database Queries Count:** `{data['system_performance']['database_queries_count']}`")
+                    
+            with tab2:
+                col_eval1, col_eval2 = st.columns(2)
+                with col_eval1:
+                    st.markdown("#### LangSmith AI Evaluation Dimensions")
+                    radar_chart = db_comp.render_radar_eval_metrics(data)
+                    st.plotly_chart(radar_chart, use_container_width=True)
+                with col_eval2:
+                    st.markdown("#### Model Token Usage & Cost (Est)")
+                    db_comp.render_model_metrics(data)
+                    
+                st.markdown("#### Core Evaluation Metrics")
+                db_comp.render_evaluation_metrics_cards(data)
+                
+            with tab3:
+                # Active app selector for traces
+                apps = data.get("applications", [])
+                app_ids = [a["id"] for a in apps]
+                
+                selected_app_id = st.selectbox(
+                    "Select Application Context for Detailed Tracing:",
+                    app_ids,
+                    key="trace_app_select"
+                )
+                
+                selected_app = next((a for a in apps if a["id"] == selected_app_id), None)
+                
+                col_tr1, col_tr2 = st.columns(2)
+                with col_tr1:
+                    db_comp.render_agent_execution_trace(selected_app)
+                with col_tr2:
+                    st.markdown("#### Document validation & Forgery Checks")
+                    db_comp.render_document_validation_analytics(selected_app)
+                    
+                    st.markdown("#### Credit Evaluation Risk Breakdown")
+                    db_comp.render_credit_score_evaluation_cards(selected_app)
+                    
+                    st.markdown("#### Demographic Fairness Assessment")
+                    db_comp.render_fairness_dashboard(selected_app)
+                    
+            with tab4:
+                col_gov1, col_gov2 = st.columns(2)
+                with col_gov1:
+                    st.markdown("#### Human Gate & Decisions Override")
+                    trace_app_select = st.selectbox(
+                        "Select Application Context for Governance Audit:",
+                        app_ids,
+                        key="gov_app_select"
+                    )
+                    selected_gov_app = next((a for a in apps if a["id"] == trace_app_select), None)
+                    db_comp.render_human_approval_gate(selected_gov_app)
+                with col_gov2:
+                    st.markdown("#### RAG Policy Context Retrieved")
+                    db_comp.render_rag_eval_details(data, selected_gov_app)
+                    
+                st.markdown("---")
+                db_comp.render_export_section(data)
+                
+            with tab5:
+                st.markdown("#### Search & Filter Queue")
+                col_f1, col_f2, col_f3 = st.columns(3)
+                with col_f1:
+                    search_q = st.text_input("🔍 Search by Applicant Name or Email", placeholder="e.g. John")
+                with col_f2:
+                    rec_filt = st.selectbox("AI Recommendation Filter", ["All", "Approve", "Refer", "Decline"])
+                with col_f3:
+                    status_filt = st.selectbox("Final Status Filter", ["All", "Intake", "Doc_Validation", "Approved", "Declined", "Refer"])
+                    
+                filters = {
+                    "recommendation": rec_filt,
+                    "status": status_filt
+                }
+                
+                db_comp.render_advanced_applications_table(data, search_query=search_q, filters=filters)
+                
+        else:
+            st.error("Failed to load evaluation aggregates from the backend server API.")
+    except Exception as e:
+        st.error(f"Failed to connect to the backend server: {str(e)}")

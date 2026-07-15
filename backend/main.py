@@ -38,6 +38,7 @@ from backend.database.repository import (
 from backend.rag.pipeline import rag_pipeline
 from backend.agents.workflow import run_underwriting_workflow
 from backend.utils.auth import RoleChecker, get_password_hash, verify_password, create_access_token
+from backend.utils.evaluation_queries import get_evaluation_dashboard_data
 
 # Configure document uploads folder
 UPLOAD_DIR = "./uploads"
@@ -484,6 +485,18 @@ async def get_audit(
             } for log in logs
         ]
     }
+
+
+@app.get("/evaluation/dashboard-data", tags=["Evaluation"])
+async def get_dashboard_evaluation_data(
+    db: Session = Depends(get_db),
+    current_user: db_models.User = Depends(RoleChecker(["ADMIN", "UNDERWRITER", "AUDITOR"]))
+):
+    """
+    Retrieves aggregated and detailed evaluations of all applications processed by the AI agent.
+    """
+    logger.info("REST: Querying evaluation dashboard data")
+    return get_evaluation_dashboard_data(db)
 
 
 @app.get("/applications", response_model=List[dict], tags=["Applications"])
