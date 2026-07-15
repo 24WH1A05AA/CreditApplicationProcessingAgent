@@ -15,7 +15,7 @@ from backend.database.repository import (
     human_decision_repo,
     audit_log_repo
 )
-from backend.models.db_models import Document, Application
+from backend.models.db_models import Document, Application, PolicyResult, Recommendation
 from backend.utils.logging import logger
 import time
 from backend.utils.observability import ObservabilityManager
@@ -379,6 +379,11 @@ class WorkflowNodes:
         db = SessionLocal()
         try:
             if app_id:
+                # Clear previous policy results and recommendations to avoid duplicates
+                db.query(PolicyResult).filter(PolicyResult.application_id == app_id).delete()
+                db.query(Recommendation).filter(Recommendation.application_id == app_id).delete()
+                db.commit()
+                
                 # 1. Create Policy Results
                 for m in policy_res.get("matches", []):
                     policy_result_repo.create(db, obj_in={
@@ -513,7 +518,14 @@ class WorkflowNodes:
                 # Update application status
                 db_app = application_repo.get(db, app_id)
                 if db_app:
-                    db_app.status = "PENDING_APPROVAL" if decision == "REFER" else (decision + "ED")
+                    if decision == "REFER":
+                        db_app.status = "PENDING_APPROVAL"
+                    elif decision == "APPROVE":
+                        db_app.status = "APPROVED"
+                    elif decision == "DECLINE":
+                        db_app.status = "DECLINED"
+                    else:
+                        db_app.status = decision
                 db.commit()
         except Exception as dbe:
             logger.warning("Could not persist human decision log in DB: %s", str(dbe))
