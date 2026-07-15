@@ -37,31 +37,46 @@ class OCRProcessor:
         if not TESSERACT_AVAILABLE:
             logger.info("OCR execution (mock fallback) for: %s", filename)
             
-            # Dynamic lookup based on application_id in filename
-            applicant_name = "JANE DOE"
-            applicant_dob = "15/05/1990"
-            parts = os.path.basename(file_path).split("_")
-            if len(parts) >= 2:
-                app_id = parts[0]
-                from backend.database.session import SessionLocal
-                from backend.database.repository import application_repo, applicant_repo
-                db = SessionLocal()
-                try:
-                    application = application_repo.get(db, app_id)
-                    if application:
-                        db_applicant = applicant_repo.get(db, application.applicant_id)
-                        if db_applicant:
-                            applicant_name = f"{db_applicant.first_name} {db_applicant.last_name}".upper()
-                            # Convert YYYY-MM-DD to DD/MM/YYYY
-                            dob_parts = db_applicant.dob.split("-")
-                            if len(dob_parts) == 3:
-                                applicant_dob = f"{dob_parts[2]}/{dob_parts[1]}/{dob_parts[0]}"
-                            else:
-                                applicant_dob = db_applicant.dob
-                except Exception:
-                    pass
-                finally:
-                    db.close()
+            # Dynamic lookup based on DB Document registry
+            applicant_name = None
+            applicant_dob = None
+            
+            from backend.database.session import SessionLocal
+            from backend.models.db_models import Document, Application, Applicant
+            db = SessionLocal()
+            try:
+                # 1. Search by exact file path matching
+                db_doc = db.query(Document).filter(Document.file_path == file_path).first()
+                if not db_doc:
+                    # 2. Search by basename matching
+                    basen = os.path.basename(file_path)
+                    db_doc = db.query(Document).filter(Document.file_path.like(f"%{basen}")).order_by(Document.created_at.desc()).first()
+                
+                # 3. Fallback to latest application if not matched (e.g. temporary file not registered yet)
+                if db_doc:
+                    application = db.query(Application).filter(Application.id == db_doc.application_id).first()
+                else:
+                    application = db.query(Application).order_by(Application.created_at.desc()).first()
+                    
+                if application:
+                    db_applicant = db.query(Applicant).filter(Applicant.id == application.applicant_id).first()
+                    if db_applicant:
+                        applicant_name = f"{db_applicant.first_name} {db_applicant.last_name}".upper()
+                        # Convert YYYY-MM-DD to DD/MM/YYYY
+                        dob_parts = db_applicant.dob.split("-")
+                        if len(dob_parts) == 3:
+                            applicant_dob = f"{dob_parts[2]}/{dob_parts[1]}/{dob_parts[0]}"
+                        else:
+                            applicant_dob = db_applicant.dob
+            except Exception as e:
+                logger.error("Error in mock OCR db lookup: %s", str(e))
+            finally:
+                db.close()
+                
+            if not applicant_name:
+                applicant_name = "JANE DOE"
+            if not applicant_dob:
+                applicant_dob = "15/05/1990"
 
             if "pan" in filename:
                 return f"""
