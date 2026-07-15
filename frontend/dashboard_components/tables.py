@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import textwrap
 
 def render_tool_call_analytics(data):
     """
@@ -51,8 +52,7 @@ def render_rag_eval_details(data, selected_app):
         if policy_res:
             for idx, p in enumerate(policy_res):
                 status_color = "🟢" if p["status"] == "PASSED" else "🟡" if p["status"] == "REFER" else "🔴"
-                st.markdown(f"""
-                <div style="background-color: rgba(30, 41, 59, 0.4); border-left: 4px solid #6366F1; border-radius: 4px; padding: 12px; margin-bottom: 10px;">
+                html_item = f"""<div style="background-color: rgba(30, 41, 59, 0.4); border-left: 4px solid #6366F1; border-radius: 4px; padding: 12px; margin-bottom: 10px;">
                     <div style="display: flex; justify-content: space-between; font-weight: 600;">
                         <span>{idx+1}. Policy Name: {p['policy_name']}</span>
                         <span>Status: {status_color} {p['status']}</span>
@@ -60,8 +60,8 @@ def render_rag_eval_details(data, selected_app):
                     <p style="margin: 6px 0 0 0; font-size: 0.88rem; color: #94A3B8;">
                         <strong>Rule Cited:</strong> {p['rule_cited']}
                     </p>
-                </div>
-                """, unsafe_allow_html=True)
+                </div>"""
+                st.markdown(textwrap.dedent(html_item), unsafe_allow_html=True)
         else:
             st.info("No policy retrieval records for this application.")
     else:
@@ -103,8 +103,7 @@ def render_document_validation_analytics(selected_app):
             info_str = f"Average Balance: `INR {val_res.get('average_balance', 0.0):,.2f}`"
             confidence = val_res.get("confidence", 0.94)
             
-        st.markdown(f"""
-        <div style="background-color: rgba(30, 41, 59, 0.35); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 12px; margin-bottom: 12px;">
+        doc_html = f"""<div style="background-color: rgba(30, 41, 59, 0.35); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 12px; margin-bottom: 12px;">
             <div style="display: flex; justify-content: space-between; font-weight: 500;">
                 <span>📄 Document Type: <strong>{doc['document_type']}</strong></span>
                 <span style="color: {'#10B981' if is_valid else '#EF4444' if is_valid is False else '#94A3B8'}; font-weight: bold;">{valid_icon}</span>
@@ -116,8 +115,8 @@ def render_document_validation_analytics(selected_app):
                 <span>OCR Engine Confidence: {confidence:.0%}</span>
                 <span>File Path: <code>{doc.get('file_path')}</code></span>
             </div>
-        </div>
-        """, unsafe_allow_html=True)
+        </div>"""
+        st.markdown(textwrap.dedent(doc_html), unsafe_allow_html=True)
 
 def render_fairness_dashboard(selected_app):
     """

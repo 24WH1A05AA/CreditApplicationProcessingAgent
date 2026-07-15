@@ -1,4 +1,5 @@
 import streamlit as st
+import textwrap
 
 def render_agent_execution_trace(app_details):
     """
@@ -164,4 +165,4 @@ def render_agent_execution_trace(app_details):
         """
         
     timeline_html += "</div>"
-    st.markdown(timeline_html, unsafe_allow_html=True)
+    st.markdown(textwrap.dedent(timeline_html), unsafe_allow_html=True)

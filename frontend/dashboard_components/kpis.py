@@ -1,4 +1,5 @@
 import streamlit as st
+import textwrap
 
 def draw_kpi_card(title, value, subtitle, icon, trend_pct=None, sparkline_svg=None, is_positive=True):
     """
@@ -18,8 +19,7 @@ def draw_kpi_card(title, value, subtitle, icon, trend_pct=None, sparkline_svg=No
         </svg>
         """
         
-    card_html = f"""
-    <div style="
+    card_html = f"""<div style="
         background: rgba(30, 41, 59, 0.4);
         backdrop-filter: blur(12px);
         -webkit-backdrop-filter: blur(12px);
@@ -48,9 +48,8 @@ def draw_kpi_card(title, value, subtitle, icon, trend_pct=None, sparkline_svg=No
                 {sparkline_svg}
             </div>
         </div>
-    </div>
-    """
-    st.markdown(card_html, unsafe_allow_html=True)
+    </div>"""
+    st.markdown(textwrap.dedent(card_html), unsafe_allow_html=True)
 
 def render_kpis_grid(data):
     """
