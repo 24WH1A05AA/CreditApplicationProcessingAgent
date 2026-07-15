@@ -501,12 +501,12 @@ elif menu == "Recommendation":
                     st.markdown("#### 🗺️ Agent Execution Path Visualization")
                     html_code = f"""
                     <div style="background-color: #0f172a; border-radius: 8px; padding: 15px; border: 1px solid #1e293b; display: flex; justify-content: center;">
-                        <pre class="mermaid" style="background: transparent; border: none; font-family: inherit;">
+                        <div class="mermaid" style="color: #F8FAFC;">
                         {obs_data.get('mermaid_chart')}
-                        </pre>
+                        </div>
                     </div>
-                    <script type="module">
-                        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+                    <script src="https://cdn.jsdelivr.net/npm/mermaid@10.2.4/dist/mermaid.min.js"></script>
+                    <script>
                         mermaid.initialize({{ startOnLoad: true, theme: 'dark' }});
                     </script>
                     """
