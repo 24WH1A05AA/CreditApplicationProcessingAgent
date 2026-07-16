@@ -23,6 +23,7 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
 # Copy backend files and application code
 COPY backend/ /app/backend/
 COPY knowledge_base/ /app/knowledge_base/
+COPY scripts/ /app/scripts/
 
 # Create folders for uploads, database, and logs/traces
 RUN mkdir -p /app/uploads /app/data /app/data/chromadb /app/data/debug_traces

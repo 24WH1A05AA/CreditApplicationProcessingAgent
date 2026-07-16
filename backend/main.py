@@ -57,6 +57,22 @@ async def lifespan(app: FastAPI):
     try:
         Base.metadata.create_all(bind=engine)
         logger.info("Database tables initialized successfully.")
+        
+        # Auto-seed mock data if database is empty
+        from backend.database.session import SessionLocal
+        from backend.models.db_models import Application
+        db_session = SessionLocal()
+        try:
+            if db_session.query(Application).count() == 0:
+                logger.info("No applications found in database. Seeding mock data...")
+                from scripts.populate_demo_data import populate_mock_data
+                populate_mock_data()
+                logger.info("Mock data seeded successfully.")
+        except Exception as seed_err:
+            logger.error("Failed to seed database: %s", str(seed_err))
+        finally:
+            db_session.close()
+            
     except Exception as e:
         logger.error("Error creating database tables: %s", str(e))
         
