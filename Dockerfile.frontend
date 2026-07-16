@@ -8,7 +8,7 @@ WORKDIR /app
 
 # Copy dependency definition and install libraries
 COPY requirements.txt .
-RUN pip install --no-cache-dir streamlit requests python-dotenv
+RUN pip install --no-cache-dir streamlit requests python-dotenv pandas plotly
 
 # Copy frontend code
 COPY frontend/ /app/frontend/
