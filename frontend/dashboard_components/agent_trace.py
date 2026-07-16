@@ -168,4 +168,5 @@ def render_agent_execution_trace(app_details):
         """
         
     timeline_html += "</div>"
-    st.markdown(textwrap.dedent(timeline_html), unsafe_allow_html=True)
+    clean_html = "\n".join([line.strip() for line in timeline_html.split("\n")])
+    st.markdown(clean_html, unsafe_allow_html=True)

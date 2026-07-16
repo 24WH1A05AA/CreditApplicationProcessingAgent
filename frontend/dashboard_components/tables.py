@@ -72,7 +72,8 @@ def render_rag_eval_details(data, selected_app):
                         <strong>Rule Cited:</strong> {p['rule_cited']}
                     </p>
                 </div>"""
-                st.markdown(textwrap.dedent(html_item), unsafe_allow_html=True)
+                clean_html_item = "\n".join([line.strip() for line in html_item.split("\n")])
+                st.markdown(clean_html_item, unsafe_allow_html=True)
         else:
             st.info("No policy retrieval records for this application.")
     else:
@@ -139,7 +140,8 @@ def render_document_validation_analytics(selected_app):
                 <span>File Path: <code>{doc.get('file_path')}</code></span>
             </div>
         </div>"""
-        st.markdown(textwrap.dedent(doc_html), unsafe_allow_html=True)
+        clean_doc_html = "\n".join([line.strip() for line in doc_html.split("\n")])
+        st.markdown(clean_doc_html, unsafe_allow_html=True)
 
 def render_fairness_dashboard(selected_app):
     """
