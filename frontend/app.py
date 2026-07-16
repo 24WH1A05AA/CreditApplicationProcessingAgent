@@ -186,17 +186,33 @@ with st.sidebar:
     st.markdown("### System Status")
     
     # Query Backend API Health
+    backend_online = False
     try:
         r_health = requests.get(f"{BACKEND_URL}/health", timeout=2)
         if r_health.status_code == 200:
             st.markdown("🟢 **Backend API:** Online")
             st.markdown("🟢 **Database:** SQLite Connected")
+            backend_online = True
         else:
             st.markdown("🔴 **Backend API:** Error Response")
             st.markdown("🔴 **Database:** Status Error")
     except Exception:
         st.markdown("🔴 **Backend API:** Offline")
         st.markdown("🔴 **Database:** Disconnected")
+
+    if backend_online:
+        st.markdown("---")
+        st.markdown("### Database Administration")
+        if st.button("🌱 Seed Demo Data", key="sidebar_seed_btn", use_container_width=True):
+            try:
+                r_seed = requests.post(f"{BACKEND_URL}/database/seed")
+                if r_seed.status_code == 200:
+                    st.success("Seeding completed successfully!")
+                    st.rerun()
+                else:
+                    st.error(f"Seeding failed: {r_seed.text}")
+            except Exception as seed_ex:
+                st.error(f"Error connecting: {str(seed_ex)}")
 
 
 # ================= Navigation Pages =================

@@ -162,6 +162,21 @@ async def health_check():
     }
 
 
+@app.post("/database/seed", tags=["System"])
+async def seed_database():
+    """
+    Manually triggers database seeding with demo data.
+    """
+    logger.info("REST: Manual database seed requested")
+    try:
+        from scripts.populate_demo_data import populate_mock_data
+        populate_mock_data()
+        return {"status": "success", "message": "Demo data seeded successfully"}
+    except Exception as e:
+        logger.error("Failed manual database seed: %s", str(e))
+        raise HTTPException(status_code=500, detail=f"Failed to seed database: {str(e)}")
+
+
 # ================= Authentication Endpoints =================
 
 @app.post("/auth/register", response_model=UserResponse, tags=["Authentication"])
