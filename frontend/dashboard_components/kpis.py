@@ -67,36 +67,44 @@ def render_kpis_grid(data):
     # Second row of metrics
     col5, col6, col7, col8 = st.columns(4)
     with col5:
+        success_rate = aggregates.get('success_rate')
+        success_rate = success_rate if success_rate is not None else 0.0
         draw_kpi_card(
             title="Success Rate",
-            value=f"{aggregates.get('success_rate', 0.0):.1%}",
+            value=f"{success_rate:.1%}",
             subtitle="Auto-approval rate",
             icon="📈",
             trend_pct="+2.5%",
             is_positive=True
         )
     with col6:
+        avg_processing_time = aggregates.get('avg_processing_time_ms')
+        avg_processing_time = avg_processing_time if avg_processing_time is not None else 322.62
         draw_kpi_card(
             title="Avg Processing Time",
-            value=f"{aggregates.get('avg_processing_time_ms', 322.62):.1f} ms",
+            value=f"{avg_processing_time:.1f} ms",
             subtitle="Latency TAT",
             icon="⏱️",
             trend_pct="-3.4%",
             is_positive=True # Decreasing latency is good
         )
     with col7:
+        avg_confidence = aggregates.get('avg_confidence')
+        avg_confidence = avg_confidence if avg_confidence is not None else 0.85
         draw_kpi_card(
             title="Average Confidence",
-            value=f"{aggregates.get('avg_confidence', 0.85):.1%}",
+            value=f"{avg_confidence:.1%}",
             subtitle="AI Confidence score",
             icon="🎯",
             trend_pct="Stable",
             is_positive=True
         )
     with col8:
+        fairness_pass = aggregates.get('fairness_pass_rate')
+        fairness_pass = fairness_pass if fairness_pass is not None else 1.0
         draw_kpi_card(
             title="Fairness Pass Rate",
-            value=f"{aggregates.get('fairness_pass_rate', 1.0):.1%}",
+            value=f"{fairness_pass:.1%}",
             subtitle="Bias check compliance",
             icon="⚖️",
             trend_pct="100.0%",
@@ -106,36 +114,44 @@ def render_kpis_grid(data):
     # Third row of metrics
     col9, col10, col11, col12 = st.columns(4)
     with col9:
+        avg_dti = aggregates.get('avg_dti')
+        avg_dti = avg_dti if avg_dti is not None else 0.245
         draw_kpi_card(
             title="Average DTI",
-            value=f"{aggregates.get('avg_dti', 0.245):.2%}",
+            value=f"{avg_dti:.2%}",
             subtitle="Debt-To-Income ratio",
             icon="📉",
             trend_pct="Healthy (<35%)",
             is_positive=True
         )
     with col10:
+        avg_cs = aggregates.get('avg_credit_score')
+        avg_cs = avg_cs if avg_cs is not None else 712.0
         draw_kpi_card(
             title="Avg Credit Score",
-            value=f"{int(aggregates.get('avg_credit_score', 712.0))}",
+            value=f"{int(avg_cs)}",
             subtitle="Bureau credit rating",
             icon="💳",
             trend_pct="+15 pts",
             is_positive=True
         )
     with col11:
+        retrieval_acc = aggregates.get('retrieval_accuracy')
+        retrieval_acc = retrieval_acc if retrieval_acc is not None else 1.0
         draw_kpi_card(
             title="Retrieval Accuracy",
-            value=f"{aggregates.get('retrieval_accuracy', 1.0):.1%}",
+            value=f"{retrieval_acc:.1%}",
             subtitle="RAG context match",
             icon="🔍",
             trend_pct="Optimal",
             is_positive=True
         )
     with col12:
+        tool_succ = aggregates.get('tool_call_success_rate')
+        tool_succ = tool_succ if tool_succ is not None else 1.0
         draw_kpi_card(
             title="Tool Success Rate",
-            value=f"{aggregates.get('tool_call_success_rate', 1.0):.1%}",
+            value=f"{tool_succ:.1%}",
             subtitle="APIs and Node operations",
             icon="⚙️",
             trend_pct="No faults",

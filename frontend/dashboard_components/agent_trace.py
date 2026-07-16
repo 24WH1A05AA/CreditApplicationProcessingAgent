@@ -133,10 +133,13 @@ def render_agent_execution_trace(app_details):
         elif step_id == "human_approval_node":
             h_dec = app_details.get("human_decision", {})
             if h_dec and h_dec.get("decision") != "PENDING":
-                latency_val = h_dec.get("duration_seconds", 0.0) * 1000.0
+                dur = h_dec.get("duration_seconds")
+                dur = dur if dur is not None else 0.0
+                latency_val = dur * 1000.0
                 is_completed = True
                 
         # Status styling
+        latency_val = latency_val if latency_val is not None else 0.0
         badge_class = "completed" if is_completed else ""
         status_text = f"🟢 COMPLETED ({latency_val:.1f} ms)" if is_completed else "⚪ NOT EXECUTED"
         

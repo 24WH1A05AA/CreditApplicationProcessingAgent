@@ -270,7 +270,9 @@ if menu == "Dashboard":
             with cols[1]:
                 st.write(f"{app['applicant']['first_name']} {app['applicant']['last_name']}")
             with cols[2]:
-                st.write(f"INR {app['loan_amount']:,.2f}")
+                loan_amt = app.get('loan_amount')
+                loan_amt = loan_amt if loan_amt is not None else 0.0
+                st.write(f"INR {loan_amt:,.2f}")
             with cols[3]:
                 st.write(app["loan_purpose"])
             with cols[4]:
@@ -431,9 +433,13 @@ elif menu == "Recommendation":
                 with col1:
                     # 2. Risk Metrics Card
                     st.markdown("### Risk Analysis & Scoring")
-                    st.write(f"📊 **Composite Risk Score:** `{reco_det.get('composite_score', 0.0):.2f}`")
+                    comp_score = reco_det.get('composite_score')
+                    comp_score = comp_score if comp_score is not None else 0.0
+                    dti_ratio = app_det.get('dti_ratio')
+                    dti_ratio = dti_ratio if dti_ratio is not None else 0.0
+                    st.write(f"📊 **Composite Risk Score:** `{comp_score:.2f}`")
                     st.write(f"📈 **Credit Bureau Score:** `{app_det.get('credit_score') or 'N/A'}`")
-                    st.write(f"📉 **Debt-To-Income (DTI) Ratio:** `{app_det.get('dti_ratio', 0.0):.2%}`")
+                    st.write(f"📉 **Debt-To-Income (DTI) Ratio:** `{dti_ratio:.2%}`")
                     
                     # 3. Fairness Validation Card
                     st.markdown("### Fairness Check Results")
@@ -487,7 +493,9 @@ elif menu == "Recommendation":
                     # Display timing and token usage in columns
                     ocol1, ocol2, ocol3 = st.columns(3)
                     with ocol1:
-                        st.metric("Total Latency", f"{obs_data.get('total_latency_ms', 0.0):.2f} ms")
+                        total_latency = obs_data.get('total_latency_ms')
+                        total_latency = total_latency if total_latency is not None else 0.0
+                        st.metric("Total Latency", f"{total_latency:.2f} ms")
                     with ocol2:
                         st.metric("Estimated Tokens", f"{obs_data.get('token_usage', {}).get('total_tokens', 0)} tokens")
                     with ocol3:
@@ -541,9 +549,15 @@ elif menu == "Approval Gate":
                     st.markdown("### Applicant Profile")
                     st.write(f"👤 **Name:** {app_det['applicant']['first_name']} {app_det['applicant']['last_name']}")
                     st.write(f"📧 **Email:** {app_det['applicant']['email']}")
-                    st.write(f"💰 **Monthly Income:** INR {app_det['applicant']['monthly_income']:,.2f}")
-                    st.write(f"💳 **Existing EMI:** INR {app_det['applicant']['existing_emi']:,.2f}")
-                    st.write(f"🏦 **Loan Requested:** INR {app_det['loan_amount']:,.2f}")
+                    monthly_inc = app_det.get('applicant', {}).get('monthly_income')
+                    monthly_inc = monthly_inc if monthly_inc is not None else 0.0
+                    existing_emi = app_det.get('applicant', {}).get('existing_emi')
+                    existing_emi = existing_emi if existing_emi is not None else 0.0
+                    loan_amt = app_det.get('loan_amount')
+                    loan_amt = loan_amt if loan_amt is not None else 0.0
+                    st.write(f"💰 **Monthly Income:** INR {monthly_inc:,.2f}")
+                    st.write(f"💳 **Existing EMI:** INR {existing_emi:,.2f}")
+                    st.write(f"🏦 **Loan Requested:** INR {loan_amt:,.2f}")
                     
                 with col2:
                     st.markdown("### AI Analysis Summary")

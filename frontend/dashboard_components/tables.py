@@ -36,15 +36,26 @@ def render_rag_eval_details(data, selected_app):
     st.markdown("#### Vector Retrieval Settings")
     
     col1, col2, col3, col4 = st.columns(4)
+    vector_search_time = rag.get('vector_search_time_ms')
+    vector_search_time = vector_search_time if vector_search_time is not None else 8.5
+    citation_qual = rag.get('citation_quality')
+    citation_qual = citation_qual if citation_qual is not None else 0.95
+    faith = rag.get('faithfulness')
+    faith = faith if faith is not None else 0.96
+    ground = rag.get('groundedness')
+    ground = ground if ground is not None else 0.98
+    halluc = rag.get('hallucination_score')
+    halluc = halluc if halluc is not None else 0.02
+
     col1.metric("Top-k Retrieval", f"{rag.get('chunks_retrieved_count', 3)}")
-    col2.metric("Vector Search Latency", f"{rag.get('vector_search_time_ms', 8.5):.1f} ms")
+    col2.metric("Vector Search Latency", f"{vector_search_time:.1f} ms")
     col3.metric("Similarity Threshold", "0.75")
-    col4.metric("Citation Quality Index", f"{rag.get('citation_quality', 0.95):.0%}")
+    col4.metric("Citation Quality Index", f"{citation_qual:.0%}")
     
     col5, col6, col7 = st.columns(3)
-    col5.metric("Faithfulness Score", f"{rag.get('faithfulness', 0.96):.0%}")
-    col6.metric("Groundedness Index", f"{rag.get('groundedness', 0.98):.0%}")
-    col7.metric("Hallucination Flag", f"{rag.get('hallucination_score', 0.02):.2f}", delta="-0.03", delta_color="inverse")
+    col5.metric("Faithfulness Score", f"{faith:.0%}")
+    col6.metric("Groundedness Index", f"{ground:.0%}")
+    col7.metric("Hallucination Flag", f"{halluc:.2f}", delta="-0.03", delta_color="inverse")
 
     st.markdown("#### Retrieved Policies & Citations")
     if selected_app:
@@ -91,17 +102,29 @@ def render_document_validation_analytics(selected_app):
         info_str = ""
         confidence = 0.95
         if doc['document_type'] == "PAN":
-            info_str = f"PAN Number: `{val_res.get('pan_number', 'N/A')}` | Name: `{val_res.get('name', 'N/A')}`"
-            confidence = val_res.get("confidence", 0.98)
+            info_str = f"PAN Number: `{val_res.get('pan_number') or 'N/A'}` | Name: `{val_res.get('name') or 'N/A'}`"
+            confidence = val_res.get("confidence")
+            confidence = confidence if confidence is not None else 0.98
         elif doc['document_type'] == "Aadhaar":
-            info_str = f"Aadhaar Number: `{val_res.get('aadhaar_number', 'N/A')}` | YOB: `{val_res.get('yob', 'N/A')}`"
-            confidence = val_res.get("confidence", 0.97)
+            info_str = f"Aadhaar Number: `{val_res.get('aadhaar_number') or 'N/A'}` | YOB: `{val_res.get('yob') or 'N/A'}`"
+            confidence = val_res.get("confidence")
+            confidence = confidence if confidence is not None else 0.97
         elif doc['document_type'] == "Salary Slip":
-            info_str = f"Monthly salary parsed: `INR {val_res.get('salary', 0.0):,.2f}` | Month: `{val_res.get('month', 'N/A')}`"
-            confidence = val_res.get("confidence", 0.92)
+            salary = val_res.get('salary')
+            if salary is None:
+                salary = val_res.get('net_pay')
+            if salary is None:
+                salary = 0.0
+            month = val_res.get('month') or 'N/A'
+            info_str = f"Monthly salary parsed: `INR {salary:,.2f}` | Month: `{month}`"
+            confidence = val_res.get("confidence")
+            confidence = confidence if confidence is not None else 0.92
         elif doc['document_type'] == "Bank Statement":
-            info_str = f"Average Balance: `INR {val_res.get('average_balance', 0.0):,.2f}`"
-            confidence = val_res.get("confidence", 0.94)
+            avg_bal = val_res.get('average_balance')
+            avg_bal = avg_bal if avg_bal is not None else 0.0
+            info_str = f"Average Balance: `INR {avg_bal:,.2f}`"
+            confidence = val_res.get("confidence")
+            confidence = confidence if confidence is not None else 0.94
             
         doc_html = f"""<div style="background-color: rgba(30, 41, 59, 0.35); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 12px; margin-bottom: 12px;">
             <div style="display: flex; justify-content: space-between; font-weight: 500;">
@@ -163,7 +186,9 @@ def render_human_approval_gate(selected_app):
     col1, col2, col3 = st.columns(3)
     col1.metric("AI Recommendation Decision", f"{reco.get('decision', 'REFER')}")
     col2.metric("Final Underwriter Sign-off", f"{h_dec.get('decision', 'PENDING')}")
-    col3.metric("Review Latency", f"{h_dec.get('duration_seconds', 0.0):.1f} s")
+    duration_sec = h_dec.get('duration_seconds')
+    duration_sec = duration_sec if duration_sec is not None else 0.0
+    col3.metric("Review Latency", f"{duration_sec:.1f} s")
     
     st.markdown("#### Review Details & Comments")
     st.write(f"🧑‍✈️ **Assigned Reviewer:** `{h_dec.get('underwriter') or 'Unassigned'}`")

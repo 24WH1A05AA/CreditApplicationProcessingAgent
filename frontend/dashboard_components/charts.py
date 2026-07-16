@@ -232,6 +232,7 @@ def render_system_perf_gauge(metric_val, name, max_val=100, color='#6366F1'):
     """
     Generates a radial gauge chart for CPU or memory.
     """
+    metric_val = metric_val if metric_val is not None else 0.0
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=metric_val,
