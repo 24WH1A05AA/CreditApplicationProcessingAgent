@@ -29,7 +29,7 @@ class RAGPipeline:
             try:
                 logger.info("Using OpenAIEmbeddings (via OpenRouter) for Chroma vector store")
                 self.embeddings = OpenAIEmbeddings(
-                    openai_api_key=settings.OPENAI_API_KEY,
+                    openai_api_key=settings.OPENAI_API_KEY, #text-embedding-3-small model for embeddings
                     openai_api_base=settings.OPENAI_API_BASE
                 )
             except Exception as e:
