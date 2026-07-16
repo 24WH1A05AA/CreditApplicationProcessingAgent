@@ -232,6 +232,16 @@ async def create_loan_application(
     """
     logger.info("REST: Creating loan application for applicant %s", app_in.applicant.email)
     
+    # Run Input Guardrails
+    from backend.utils.guardrails import GuardrailEngine
+    guardrail_errors = GuardrailEngine.validate_inputs(app_in.model_dump())
+    if guardrail_errors:
+        logger.warning("REST: Blocked loan application due to guardrail violations: %s", "; ".join(guardrail_errors))
+        raise HTTPException(
+            status_code=400,
+            detail="; ".join(guardrail_errors)
+        )
+        
     # Fetch or Create Applicant
     db_applicant = applicant_repo.get_by_email(db, app_in.applicant.email)
     if not db_applicant:
