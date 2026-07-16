@@ -26,6 +26,8 @@ class PANValidationResult(BaseModel):
     name: Optional[str] = None
     dob: Optional[str] = None
     error_message: Optional[str] = None
+    forged: bool = False
+    forgery_reason: Optional[str] = None
 
 class AadhaarValidationResult(BaseModel):
     is_valid: bool
@@ -33,18 +35,24 @@ class AadhaarValidationResult(BaseModel):
     name: Optional[str] = None
     dob: Optional[str] = None
     error_message: Optional[str] = None
+    forged: bool = False
+    forgery_reason: Optional[str] = None
 
 class SalarySlipValidationResult(BaseModel):
     is_valid: bool
     net_pay: Optional[float] = None
     employer_name: Optional[str] = None
     error_message: Optional[str] = None
+    forged: bool = False
+    forgery_reason: Optional[str] = None
 
 class BankStatementValidationResult(BaseModel):
     is_valid: bool
     average_balance: Optional[float] = None
     total_deposits: Optional[float] = None
     error_message: Optional[str] = None
+    forged: bool = False
+    forgery_reason: Optional[str] = None
 
 class ValidationSummary(BaseModel):
     is_complete: bool
@@ -95,6 +103,7 @@ class DocumentParser:
             
         text = ""
         page_count = 0
+        metadata_warnings = []
         try:
             reader = PdfReader(file_path)
             page_count = len(reader.pages)
@@ -102,6 +111,16 @@ class DocumentParser:
                 page_text = page.extract_text()
                 if page_text:
                     text += page_text + "\n"
+                    
+            # Audit PDF metadata for tampering indicators
+            pdf_meta = reader.metadata
+            if pdf_meta:
+                producer = str(pdf_meta.get("/Producer", "")).lower()
+                creator = str(pdf_meta.get("/Creator", "")).lower()
+                suspicious_tools = ["photoshop", "illustrator", "canva", "indesign", "coreldraw", "gimp", "pdfedit", "pdfill", "nitro", "sejda"]
+                for tool in suspicious_tools:
+                    if tool in producer or tool in creator:
+                        metadata_warnings.append(f"PDF metadata indicates creation or modification using a graphic editor: {tool.capitalize()}")
         except Exception as pdf_err:
             logger.warning("Failed standard PDF extraction on %s: %s. Attempting OCR...", file_path, str(pdf_err))
             
@@ -119,7 +138,13 @@ class DocumentParser:
         return ParsedDocument(
             document_type=document_type,
             extracted_text=text,
-            metadata={"file_name": os.path.basename(file_path), "page_count": page_count, "ocr_fallback": ocr_fallback_triggered, "file_path": file_path}
+            metadata={
+                "file_name": os.path.basename(file_path),
+                "page_count": page_count,
+                "ocr_fallback": ocr_fallback_triggered,
+                "file_path": file_path,
+                "pdf_metadata_warnings": metadata_warnings
+            }
         )
 
     @staticmethod
@@ -184,16 +209,28 @@ class LLMDocumentValidator:
         doc_type = parsed_doc.document_type
         text = parsed_doc.extracted_text
         file_path = parsed_doc.metadata.get("file_path")
+        metadata_warnings = parsed_doc.metadata.get("pdf_metadata_warnings", [])
         
         parser = JsonOutputParser(pydantic_object=pydantic_model)
         format_instructions = parser.get_format_instructions()
         
+        warnings_context = ""
+        if metadata_warnings:
+            warnings_context = "PDF METADATA WARNINGS DETECTED ON THIS FILE:\n" + "\n".join([f"- {w}" for w in metadata_warnings]) + "\n\n"
+            
         prompt_text = (
-            f"You are a credit underwriting document verification assistant.\n"
+            f"You are a credit underwriting document verification and fraud prevention assistant.\n"
             f"Analyze the following document and extract the required fields for a {doc_type} document.\n"
             f"Ensure dates are formatted as DD/MM/YYYY or YYYY-MM-DD. If values are missing, output null.\n"
             f"Verify if the document is valid for the specified type (e.g. check if it is a {doc_type} document, contains the expected headers/fields, and is not a completely different document type).\n"
             f"If the document is invalid, not of the specified type, or has clear missing mandatory information, set `is_valid` to false and specify the reason in `error_message`.\n\n"
+            f"FORGERY & TAMPER DETECTOR INSTRUCTIONS:\n"
+            f"Analyze the document text and scan for inconsistencies or fraud indicators:\n"
+            f"- For PAN/Aadhaar: check if formatting looks inconsistent, name spellings vary, or characters look edited.\n"
+            f"- For Salary Slip: check if net pay makes mathematical sense (i.e., check if basic + allowances - deductions equals net pay), or if the employee name is mismatched.\n"
+            f"- For Bank Statement: check if transaction columns, balances, or averages look modified or physically altered.\n"
+            f"If there is any sign of digital tampering, numbers mismatch, or mathematical forgery, set `forged` to true and detail the reasons in `forgery_reason`. Otherwise set `forged` to false.\n\n"
+            f"{warnings_context}"
             f"Extracted Text from OCR:\n\"\"\"\n{text}\n\"\"\"\n\n"
             f"{format_instructions}"
         )
@@ -222,13 +259,21 @@ class LLMDocumentValidator:
             else:
                 logger.info("Running text-based LLM extraction for %s...", doc_type)
                 messages = [
-                    SystemMessage(content="You are an expert document parser."),
+                    SystemMessage(content="You are an expert document parser and fraud auditor. Output only JSON."),
                     HumanMessage(content=prompt_text)
                 ]
                 response = llm.invoke(messages)
                 result = parser.parse(response.content)
                 
-            return pydantic_model(**result)
+            result_obj = pydantic_model(**result)
+            # Enforce metadata-based warnings
+            if metadata_warnings:
+                result_obj.forged = True
+                reasons = [result_obj.forgery_reason] if result_obj.forgery_reason else []
+                reasons.extend(metadata_warnings)
+                result_obj.forgery_reason = "; ".join(reasons)
+                
+            return result_obj
         except Exception as e:
             logger.warning("LLM parsing failed for %s: %s. Falling back to regex parser.", doc_type, str(e))
             return None

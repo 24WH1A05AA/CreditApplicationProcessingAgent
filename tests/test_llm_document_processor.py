@@ -87,3 +87,52 @@ def test_document_validator_integration_fallback():
         assert res.pan_number == "ABCDE1234F"
         assert res.name == "JANE REGEX"
         assert res.dob == "12/12/1980"
+
+
+def test_parse_pdf_metadata_warnings(tmp_path):
+    from backend.tools.document_processor import DocumentParser
+    from unittest.mock import MagicMock, patch
+
+    # Create dummy pdf file path
+    dummy_pdf = tmp_path / "dummy.pdf"
+    with open(dummy_pdf, "w") as f:
+        f.write("%PDF-1.4 ...")
+
+    mock_reader = MagicMock()
+    mock_reader.pages = [MagicMock()]
+    mock_reader.pages[0].extract_text.return_value = "Normal text content"
+    mock_reader.metadata = {"/Producer": "Adobe Photoshop CC (Windows)", "/Creator": "Canva"}
+
+    with patch("backend.tools.document_processor.PdfReader", return_value=mock_reader):
+        parsed = DocumentParser.parse_pdf(str(dummy_pdf), "Salary Slip")
+        assert parsed.document_type == "Salary Slip"
+        assert parsed.extracted_text.strip() == "Normal text content"
+        
+        # Verify metadata warnings contain Photoshop and Canva
+        warnings = parsed.metadata.get("pdf_metadata_warnings", [])
+        assert any("Photoshop" in w for w in warnings)
+        assert any("Canva" in w for w in warnings)
+
+
+def test_parse_with_llm_enforces_metadata_warnings():
+    mock_llm_instance = MagicMock()
+    mock_response = MagicMock()
+    mock_response.content = '{"is_valid": true, "pan_number": "ABCDE1234F", "name": "MOCK JANE", "dob": "15/05/1990", "error_message": null, "forged": false, "forgery_reason": null}'
+    mock_llm_instance.invoke.return_value = mock_response
+
+    with patch.object(settings, "OPENAI_API_KEY", "sk-test-key-123"):
+        with patch("backend.tools.document_processor.ChatOpenAI", return_value=mock_llm_instance):
+            parsed = ParsedDocument(
+                document_type="PAN", 
+                extracted_text="MOCK PAN",
+                metadata={
+                    "file_path": "uploads/mock_pan.png",
+                    "pdf_metadata_warnings": ["PDF metadata indicates creation or modification using a graphic editor: Canva"]
+                }
+            )
+            res = LLMDocumentValidator.parse_with_llm(parsed, PANValidationResult)
+            
+            assert res is not None
+            assert res.forged is True
+            assert "Canva" in res.forgery_reason
+
