@@ -1,7 +1,7 @@
 import os
 import json
 import hashlib
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from pydantic import BaseModel, Field
 from backend.utils.logging import logger
 
@@ -18,6 +18,10 @@ class CreditBureauResult(BaseModel):
     credit_score: int = Field(..., description="Bureau credit score (300 to 900)")
     has_active_defaults: bool = Field(..., description="True if applicant has active default in last 12m")
     inquiries_last_6m: int = Field(..., description="Number of credit inquiries in last 6 months")
+    historical_scores: List[int] = Field(default_factory=list)
+    payment_history_pct: float = Field(98.5)
+    credit_mix: str = Field("Good mix")
+    credit_age_years: float = Field(5.0)
 
 class RiskScoreResult(BaseModel):
     credit_score: int
@@ -128,13 +132,45 @@ class CreditScoringEngine:
         email_clean = email.strip().lower()
         
         if "clear.approve" in email_clean:
-            return CreditBureauResult(credit_score=800, has_active_defaults=False, inquiries_last_6m=0)
+            return CreditBureauResult(
+                credit_score=800,
+                has_active_defaults=False,
+                inquiries_last_6m=0,
+                historical_scores=[790, 792, 795, 798, 799, 800],
+                payment_history_pct=99.8,
+                credit_mix="Excellent mix (secured home loan + credit card)",
+                credit_age_years=8.5
+            )
         elif "borderline.refer" in email_clean:
-            return CreditBureauResult(credit_score=680, has_active_defaults=False, inquiries_last_6m=2)
+            return CreditBureauResult(
+                credit_score=680,
+                has_active_defaults=False,
+                inquiries_last_6m=2,
+                historical_scores=[685, 680, 678, 682, 685, 680],
+                payment_history_pct=96.5,
+                credit_mix="Good mix (secured auto loan + unsecured card)",
+                credit_age_years=4.2
+            )
         elif "declined.lowscore" in email_clean or "decline" in email_clean:
-            return CreditBureauResult(credit_score=550, has_active_defaults=False, inquiries_last_6m=4)
+            return CreditBureauResult(
+                credit_score=550,
+                has_active_defaults=False,
+                inquiries_last_6m=4,
+                historical_scores=[580, 570, 565, 560, 555, 550],
+                payment_history_pct=88.2,
+                credit_mix="Fair mix (unsecured loans/cards)",
+                credit_age_years=2.1
+            )
         elif "default" in email_clean:
-            return CreditBureauResult(credit_score=710, has_active_defaults=True, inquiries_last_6m=1)
+            return CreditBureauResult(
+                credit_score=710,
+                has_active_defaults=True,
+                inquiries_last_6m=1,
+                historical_scores=[725, 720, 715, 705, 708, 710],
+                payment_history_pct=92.1,
+                credit_mix="Good mix (secured auto loan + unsecured card)",
+                credit_age_years=5.0
+            )
         
         hasher = hashlib.md5(email_clean.encode())
         hash_val = int(hasher.hexdigest(), 16)
@@ -142,11 +178,33 @@ class CreditScoringEngine:
         inquiries = hash_val % 6
         has_default = (hash_val % 20) == 0
 
+        # Generate a simulated historical score list (last 6 months)
+        hist_scores = []
+        curr_score = credit_score
+        for i in range(6):
+            variance = ((hash_val + i) % 15) - 7
+            hist_scores.append(max(300, min(900, curr_score - variance * (6 - i))))
+            
+        payment_pct = 90.0 + (hash_val % 101) / 10.0
+        age = round(1.0 + (hash_val % 15) + (hash_val % 10)/10.0, 1)
+        
+        mixes = [
+            "Poor mix (unsecured cards only)",
+            "Fair mix (unsecured loans/cards)",
+            "Good mix (secured auto loan + unsecured card)",
+            "Excellent mix (secured home loan + credit card)"
+        ]
+        mix = mixes[hash_val % len(mixes)]
+
         logger.info("Bureau credit score fetched for %s: %d", email, credit_score)
         return CreditBureauResult(
             credit_score=credit_score,
             has_active_defaults=has_default,
-            inquiries_last_6m=inquiries
+            inquiries_last_6m=inquiries,
+            historical_scores=hist_scores,
+            payment_history_pct=payment_pct,
+            credit_mix=mix,
+            credit_age_years=age
         )
 
     @staticmethod

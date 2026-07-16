@@ -317,7 +317,11 @@ class WorkflowNodes:
             "dti_ratio": dti_res.dti_ratio,
             "dti_status": dti_res.status,
             "composite_risk_score": risk_res.composite_risk_score,
-            "risk_rating": risk_res.risk_rating
+            "risk_rating": risk_res.risk_rating,
+            "historical_scores": bureau_res.historical_scores,
+            "payment_history_pct": bureau_res.payment_history_pct,
+            "credit_mix": bureau_res.credit_mix,
+            "credit_age_years": bureau_res.credit_age_years
         }
 
         # Update application table with score information

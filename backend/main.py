@@ -581,8 +581,20 @@ async def get_application_status(
     db_applicant = applicant_repo.get(db, application.applicant_id)
     db_docs = document_repo.get_by_application(db, application_id)
     
+    from backend.tools.credit_engine import CreditScoringEngine
+    bureau_res = CreditScoringEngine.fetch_credit_bureau_score(db_applicant.email)
+    
     return {
         "id": application.id,
+        "bureau_details": {
+            "credit_score": bureau_res.credit_score,
+            "has_active_defaults": bureau_res.has_active_defaults,
+            "inquiries_last_6m": bureau_res.inquiries_last_6m,
+            "historical_scores": bureau_res.historical_scores,
+            "payment_history_pct": bureau_res.payment_history_pct,
+            "credit_mix": bureau_res.credit_mix,
+            "credit_age_years": bureau_res.credit_age_years
+        },
         "applicant": {
             "first_name": db_applicant.first_name,
             "last_name": db_applicant.last_name,

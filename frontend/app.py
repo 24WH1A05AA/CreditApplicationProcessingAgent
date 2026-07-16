@@ -499,11 +499,60 @@ elif menu == "Recommendation":
                     else:
                         st.info("Audit logs unavailable.")
                         
-                # 5. Risk Factor Waterfall Chart Explainability
                 st.markdown("---")
                 st.markdown("### 📊 Credit Risk Explainability Breakdown")
                 fig_waterfall = db_comp.render_risk_waterfall_chart(app_det)
                 st.plotly_chart(fig_waterfall, use_container_width=True)
+                
+                # 6. Credit Bureau History Panel
+                st.markdown("---")
+                st.markdown("### 🏛️ Credit Bureau Report & Historical Score Analysis")
+                
+                bureau = app_det.get("bureau_details", {})
+                if bureau:
+                    bcol1, bcol2 = st.columns([1, 2])
+                    with bcol1:
+                        st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
+                        st.markdown("#### **Bureau Key Metrics**")
+                        st.write(f"📈 **Active Bureau Score:** `{bureau.get('credit_score') or 'N/A'}`")
+                        st.write(f"💳 **Credit Mix Profile:** `{bureau.get('credit_mix') or 'N/A'}`")
+                        st.write(f"⏳ **Credit History Age:** `{bureau.get('credit_age_years') or 'N/A'} years`")
+                        st.write(f"✅ **Payment History:** `{bureau.get('payment_history_pct') or 98.5:.1f}% On-Time`")
+                        st.write(f"🔍 **Recent Inquiries (3m):** `{bureau.get('inquiries_last_6m') or 0}`")
+                        
+                        has_def = bureau.get('has_active_defaults', False)
+                        if has_def:
+                            st.error("⚠️ **Active Defaults Found!** Automatic override triggered.")
+                        else:
+                            st.success("✅ **No Active Defaults/Write-offs**")
+                        st.markdown("</div>", unsafe_allow_html=True)
+                        
+                    with bcol2:
+                        hist_scores = bureau.get("historical_scores", [])
+                        if hist_scores:
+                            import plotly.graph_objects as go
+                            months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"][-len(hist_scores):]
+                            fig_line = go.Figure(go.Scatter(
+                                x=months,
+                                y=hist_scores,
+                                mode='lines+markers',
+                                line=dict(color='#818CF8', width=3),
+                                marker=dict(size=8, color='#C084FC'),
+                                name="Bureau Score"
+                            ))
+                            fig_line.update_layout(
+                                title={'text': "6-Month Historical Credit Score Trend", 'font': {'color': '#F8FAFC', 'size': 14}},
+                                margin=dict(t=40, b=20, l=20, r=20),
+                                height=240,
+                                paper_bgcolor='rgba(0,0,0,0)',
+                                plot_bgcolor='rgba(0,0,0,0)',
+                                xaxis=dict(showgrid=False, color='#94A3B8'),
+                                yaxis=dict(showgrid=True, gridcolor='rgba(255,255,255,0.05)', color='#94A3B8'),
+                                font=dict(color='#F8FAFC')
+                            )
+                            st.plotly_chart(fig_line, use_container_width=True)
+                        else:
+                            st.info("No credit score history available.")
                 
                 st.markdown("---")
                 st.markdown("### 🔍 Agent Observability & Telemetry Traces")
