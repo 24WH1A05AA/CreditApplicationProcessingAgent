@@ -1,10 +1,17 @@
 import os
 import re
+import base64
+import json
 from typing import Dict, Any, List, Optional, Tuple
 from pydantic import BaseModel, Field
 from pypdf import PdfReader
 from backend.utils.logging import logger
 from backend.tools.ocr_processor import OCRProcessor
+from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import JsonOutputParser
+from langchain_core.messages import HumanMessage, SystemMessage
+from backend.config import settings
 
 # ================= Structured Pydantic Output Models =================
 
@@ -112,7 +119,7 @@ class DocumentParser:
         return ParsedDocument(
             document_type=document_type,
             extracted_text=text,
-            metadata={"file_name": os.path.basename(file_path), "page_count": page_count, "ocr_fallback": ocr_fallback_triggered}
+            metadata={"file_name": os.path.basename(file_path), "page_count": page_count, "ocr_fallback": ocr_fallback_triggered, "file_path": file_path}
         )
 
     @staticmethod
@@ -128,11 +135,103 @@ class DocumentParser:
             return ParsedDocument(
                 document_type=document_type,
                 extracted_text=text,
-                metadata={"file_name": os.path.basename(file_path), "parser": "pytesseract_ocr"}
+                metadata={"file_name": os.path.basename(file_path), "parser": "pytesseract_ocr", "file_path": file_path}
             )
         except Exception as e:
             logger.error("Failed to run OCR on image %s: %s", file_path, str(e))
             raise ValueError(f"OCR parsing failed: {str(e)}")
+
+
+class LLMDocumentValidator:
+    """
+    Leverages LLM capabilities to parse and validate documents, with regex/mock fallbacks.
+    Supports both text-based parsing and multimodal (image-based) parsing when a multimodal model is configured.
+    """
+    @staticmethod
+    def get_llm():
+        is_mock_key = (
+            not settings.OPENAI_API_KEY 
+            or settings.OPENAI_API_KEY == "mock-key-for-development"
+            or not settings.OPENAI_API_KEY.startswith("sk-")
+        )
+        if is_mock_key:
+            return None
+        try:
+            return ChatOpenAI(
+                openai_api_key=settings.OPENAI_API_KEY,
+                openai_api_base=settings.OPENAI_API_BASE,
+                model_name=settings.OPENAI_MODEL,
+                temperature=0.0,
+                max_retries=2
+            )
+        except Exception as e:
+            logger.error("Failed to initialize ChatOpenAI for validator: %s", str(e))
+            return None
+
+    @staticmethod
+    def is_multimodal_supported() -> bool:
+        # Check if the model name indicates multimodal support (like gpt-4o, gpt-4-vision, gemini)
+        model = settings.OPENAI_MODEL.lower()
+        return "gpt-4o" in model or "vision" in model or "gemini" in model or "claude-3" in model
+
+    @staticmethod
+    def parse_with_llm(parsed_doc: ParsedDocument, pydantic_model) -> Optional[BaseModel]:
+        llm = LLMDocumentValidator.get_llm()
+        if not llm:
+            logger.info("Using regex/heuristic fallback (no valid API key configured).")
+            return None
+            
+        doc_type = parsed_doc.document_type
+        text = parsed_doc.extracted_text
+        file_path = parsed_doc.metadata.get("file_path")
+        
+        parser = JsonOutputParser(pydantic_object=pydantic_model)
+        format_instructions = parser.get_format_instructions()
+        
+        prompt_text = (
+            f"You are a credit underwriting document verification assistant.\n"
+            f"Analyze the following document and extract the required fields for a {doc_type} document.\n"
+            f"Ensure dates are formatted as DD/MM/YYYY or YYYY-MM-DD. If values are missing, output null.\n"
+            f"Verify if the document is valid for the specified type (e.g. check if it is a {doc_type} document, contains the expected headers/fields, and is not a completely different document type).\n"
+            f"If the document is invalid, not of the specified type, or has clear missing mandatory information, set `is_valid` to false and specify the reason in `error_message`.\n\n"
+            f"Extracted Text from OCR:\n\"\"\"\n{text}\n\"\"\"\n\n"
+            f"{format_instructions}"
+        )
+        
+        try:
+            # Check if we can run multimodal analysis on images
+            is_image = file_path and os.path.exists(file_path) and (file_path.lower().endswith((".png", ".jpg", ".jpeg", ".webp")))
+            if is_image and LLMDocumentValidator.is_multimodal_supported():
+                logger.info("Running multimodal LLM extraction for image %s...", os.path.basename(file_path))
+                with open(file_path, "rb") as image_file:
+                    base64_image = base64.b64encode(image_file.read()).decode("utf-8")
+                
+                content = [
+                    {"type": "text", "text": prompt_text},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{base64_image}"
+                        }
+                    }
+                ]
+                message = HumanMessage(content=content)
+                logger.info("Invoking multimodal LLM for %s...", doc_type)
+                response = llm.invoke([message])
+                result = parser.parse(response.content)
+            else:
+                logger.info("Running text-based LLM extraction for %s...", doc_type)
+                messages = [
+                    SystemMessage(content="You are an expert document parser."),
+                    HumanMessage(content=prompt_text)
+                ]
+                response = llm.invoke(messages)
+                result = parser.parse(response.content)
+                
+            return pydantic_model(**result)
+        except Exception as e:
+            logger.warning("LLM parsing failed for %s: %s. Falling back to regex parser.", doc_type, str(e))
+            return None
 
 
 class DocumentValidator:
@@ -141,6 +240,12 @@ class DocumentValidator:
     """
     @staticmethod
     def validate_pan(parsed_doc: ParsedDocument) -> PANValidationResult:
+        # LLM integration
+        llm_res = LLMDocumentValidator.parse_with_llm(parsed_doc, PANValidationResult)
+        if llm_res:
+            logger.info("LLM successfully validated PAN.")
+            return llm_res
+
         text = parsed_doc.extracted_text.upper()
         # Regex for standard Indian PAN: 5 letters, 4 digits, 1 letter
         pan_regex = r"[A-Z]{5}[0-9]{4}[A-Z]{1}"
@@ -180,6 +285,12 @@ class DocumentValidator:
 
     @staticmethod
     def validate_aadhaar(parsed_doc: ParsedDocument) -> AadhaarValidationResult:
+        # LLM integration
+        llm_res = LLMDocumentValidator.parse_with_llm(parsed_doc, AadhaarValidationResult)
+        if llm_res:
+            logger.info("LLM successfully validated Aadhaar.")
+            return llm_res
+
         text = parsed_doc.extracted_text
         # Regex for standard 12 digit Aadhaar (with/without space separators)
         aadhaar_regex = r"\b\d{4}\s\d{4}\s\d{4}\b|\b\d{12}\b"
@@ -219,6 +330,12 @@ class DocumentValidator:
 
     @staticmethod
     def validate_salary_slip(parsed_doc: ParsedDocument) -> SalarySlipValidationResult:
+        # LLM integration
+        llm_res = LLMDocumentValidator.parse_with_llm(parsed_doc, SalarySlipValidationResult)
+        if llm_res:
+            logger.info("LLM successfully validated Salary Slip.")
+            return llm_res
+
         text = parsed_doc.extracted_text
         lines = text.split("\n")
         
@@ -253,6 +370,12 @@ class DocumentValidator:
 
     @staticmethod
     def validate_bank_statement(parsed_doc: ParsedDocument) -> BankStatementValidationResult:
+        # LLM integration
+        llm_res = LLMDocumentValidator.parse_with_llm(parsed_doc, BankStatementValidationResult)
+        if llm_res:
+            logger.info("LLM successfully validated Bank Statement.")
+            return llm_res
+
         text = parsed_doc.extracted_text
         lines = text.split("\n")
         

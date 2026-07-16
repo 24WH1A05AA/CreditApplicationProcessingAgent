@@ -1,4 +1,5 @@
 import streamlit as st
+from frontend.dashboard_components.charts import render_risk_waterfall_chart
 
 def render_model_metrics(data):
     """
@@ -98,3 +99,7 @@ def render_credit_score_evaluation_cards(selected_app):
     comp_score = comp_score if comp_score is not None else 0.5
     st.write(f"📈 **Composite AI Underwriting Score:** `{comp_score:.4f}`")
     st.write(f"🤖 **Recommendation Rationale:** {rec.get('reasoning')}")
+
+    # Render waterfall chart
+    fig_waterfall = render_risk_waterfall_chart(selected_app)
+    st.plotly_chart(fig_waterfall, use_container_width=True)

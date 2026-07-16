@@ -5,7 +5,8 @@ from frontend.dashboard_components.charts import (
     render_turnaround_time_line,
     render_radar_eval_metrics,
     render_risk_distribution_bar,
-    render_system_perf_gauge
+    render_system_perf_gauge,
+    render_risk_waterfall_chart
 )
 from frontend.dashboard_components.kpis import render_kpis_grid
 from frontend.dashboard_components.agent_trace import render_agent_execution_trace

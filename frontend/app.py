@@ -498,6 +498,12 @@ elif menu == "Recommendation":
                     else:
                         st.info("Audit logs unavailable.")
                         
+                # 5. Risk Factor Waterfall Chart Explainability
+                st.markdown("---")
+                st.markdown("### 📊 Credit Risk Explainability Breakdown")
+                fig_waterfall = db_comp.render_risk_waterfall_chart(app_det)
+                st.plotly_chart(fig_waterfall, use_container_width=True)
+                
                 st.markdown("---")
                 st.markdown("### 🔍 Agent Observability & Telemetry Traces")
                 
