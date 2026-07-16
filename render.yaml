@@ -1,0 +1,38 @@
+services:
+  - type: web
+    name: credit-backend
+    env: docker
+    dockerfilePath: Dockerfile.backend
+    plan: free
+    envVars:
+      - key: ENV
+        value: production
+      - key: DATABASE_URL
+        value: sqlite:////app/data/credit_processing.db
+      - key: CHROMA_DB_PATH
+        value: /app/data/chromadb
+      - key: KNOWLEDGE_BASE_DIR
+        value: /app/knowledge_base
+      - key: SECRET_KEY
+        generateValue: true
+      - key: OPENAI_API_KEY
+        sync: true
+      - key: OPENAI_MODEL
+        value: meta-llama/llama-3-8b-instruct:free
+      - key: OPENAI_API_BASE
+        value: https://openrouter.ai/api/v1
+      - key: PORT
+        value: 8000
+      - key: HOST
+        value: 0.0.0.0
+      - key: LOG_LEVEL
+        value: INFO
+
+  - type: web
+    name: credit-frontend
+    env: docker
+    dockerfilePath: Dockerfile.frontend
+    plan: free
+    envVars:
+      - key: BACKEND_URL
+        value: http://credit-backend:8000
