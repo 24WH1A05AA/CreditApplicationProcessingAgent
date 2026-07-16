@@ -82,3 +82,21 @@ def test_complete_rest_api_flow(tmp_path):
         db.commit()
     finally:
         db.close()
+
+
+def test_rag_chat_endpoint():
+    response = client.post("/rag/chat", json={"query": "What is the maximum allowed DTI ratio?"})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["query"] == "What is the maximum allowed DTI ratio?"
+    assert "DTI" in data["answer"] or "debt-to-income" in data["answer"].lower() or "ratio" in data["answer"].lower()
+    assert len(data["citations"]) > 0
+
+
+def test_rag_chat_endpoint_credit():
+    response = client.post("/rag/chat", json={"query": "Underwrite based on credit score"})
+    assert response.status_code == 200
+    data = response.json()
+    assert "credit" in data["answer"].lower() or "score" in data["answer"].lower() or "threshold" in data["answer"].lower()
+    assert len(data["citations"]) > 0
+

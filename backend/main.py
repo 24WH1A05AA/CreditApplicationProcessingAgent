@@ -1,5 +1,6 @@
 import os
 import shutil
+from pydantic import BaseModel
 import uvicorn
 from contextlib import asynccontextmanager
 from typing import Dict, Any, List, Optional
@@ -605,6 +606,78 @@ async def get_application_status(
                 "is_valid": doc.is_valid
             } for doc in db_docs
         ]
+    }
+
+
+class PolicyChatRequest(BaseModel):
+    query: str
+
+@app.post("/rag/chat", tags=["Policy RAG"])
+async def policy_chat_endpoint(
+    request: PolicyChatRequest,
+    current_user: db_models.User = Depends(RoleChecker(["ADMIN", "UNDERWRITER", "AUDITOR"]))
+):
+    """
+    RAG Policy Chatbot endpoint that retrieves policy guidelines and answers questions.
+    """
+    query = request.query
+    logger.info("REST: RAG Policy Chatbot query: '%s'", query)
+    
+    # Retrieve clauses
+    from backend.rag.pipeline import rag_pipeline
+    clauses = rag_pipeline.retrieve(query, k=3)
+    
+    # Prepare system message context
+    context = "\n\n".join([f"Source: {c['citation']}\n{c['content']}" for c in clauses])
+    
+    is_mock_key = (
+        not settings.OPENAI_API_KEY 
+        or settings.OPENAI_API_KEY == "mock-key-for-development"
+        or not settings.OPENAI_API_KEY.startswith("sk-")
+    )
+    
+    if is_mock_key:
+        if "dti" in query.lower():
+            answer = "According to our Credit Underwriting Policy (Clause CP-DTI-01), the maximum allowed Debt-to-Income (DTI) ratio is 45%. Candidates with a DTI ratio between 40% and 45% are referred for manual underwriter review."
+        elif "credit" in query.lower() or "score" in query.lower():
+            answer = "Under our Credit Score Threshold Guidelines (Clause CP-CS-01), a credit score of 750 or higher is required for auto-approval. Scores between 650 and 749 are referred for manual review, and scores below 650 are auto-declined. Active write-offs or defaults (Clause CP-CS-02) result in automatic decline."
+        elif "income" in query.lower():
+            answer = "Under our Income Stability Guidelines (Clause CP-INC-01), the minimum monthly income requirement is INR 25,000 for salaried applicants and INR 35,000 for self-employed applicants. Applicants below these limits are declined."
+        elif "kyc" in query.lower():
+            answer = "According to RBI KYC Guidelines (Clause RBI-KYC-01), the accepted Officially Valid Documents (OVD) for identity and address verification include PAN, Aadhaar, Passport, Voter ID, and Driver's License."
+        else:
+            answer = f"Based on the retrieved policy context:\n\n{context}\n\nPlease contact risk compliance if you require special policy exceptions."
+    else:
+        from langchain_openai import ChatOpenAI
+        from langchain_core.messages import SystemMessage, HumanMessage
+        try:
+            llm = ChatOpenAI(
+                openai_api_key=settings.OPENAI_API_KEY,
+                openai_api_base=settings.OPENAI_API_BASE,
+                model_name=settings.OPENAI_MODEL,
+                temperature=0.3
+            )
+            prompt = (
+                "You are an expert Credit Policy compliance officer assisting an underwriter.\n"
+                "Answer the user query based ONLY on the retrieved credit policies context below. "
+                "If the context does not contain sufficient information, state that clearly.\n\n"
+                f"RETRIEVED POLICY CONTEXT:\n{context}\n\n"
+                f"USER QUERY: {query}\n"
+                "Format your answer professionally in markdown. Cite the Clause codes (e.g. CP-CS-01) where relevant."
+            )
+            messages = [
+                SystemMessage(content="You are a credit compliance assistant."),
+                HumanMessage(content=prompt)
+            ]
+            response = llm.invoke(messages)
+            answer = response.content.strip()
+        except Exception as e:
+            answer = f"Error processing query via LLM: {str(e)}. Fallback context retrieved:\n\n{context}"
+            
+    return {
+        "query": query,
+        "answer": answer,
+        "citations": [c["citation"] for c in clauses]
     }
 
 

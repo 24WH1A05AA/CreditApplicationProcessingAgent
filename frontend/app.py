@@ -154,7 +154,8 @@ with st.sidebar:
             "Recommendation",
             "Approval Gate",
             "Audit History",
-            "Evaluation Dashboard"
+            "Evaluation Dashboard",
+            "Policy Chatbot"
         ]
     )
     
@@ -805,3 +806,61 @@ elif menu == "Evaluation Dashboard":
             st.error("Failed to load evaluation aggregates from the backend server API.")
     except Exception as e:
         st.error(f"Failed to connect to the backend server: {str(e)}")
+
+elif menu == "Policy Chatbot":
+    st.markdown("# 💬 Compliance & Underwriting Policy Chatbot")
+    st.markdown("Interact directly with the Credit Policy Knowledge Base (RAG) to check guidelines and exception clauses.")
+    
+    # Initialize message history
+    if "chatbot_messages" not in st.session_state:
+        st.session_state.chatbot_messages = [
+            {"role": "assistant", "content": "Hello! I am your Compliance Assistant. Ask me any question about the lending policies (e.g. KYC OVDs, DTI limits, or Credit Score thresholds)."}
+        ]
+        
+    # Render messages
+    for msg in st.session_state.chatbot_messages:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+            
+    # Handle user input
+    if prompt := st.chat_input("Enter compliance policy question..."):
+        # Append user message
+        st.session_state.chatbot_messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+            
+        # Call API
+        with st.chat_message("assistant"):
+            message_placeholder = st.empty()
+            message_placeholder.markdown("🔍 *Searching policies and formulating response...*")
+            
+            try:
+                headers = {}
+                if "token" in st.session_state:
+                    headers["Authorization"] = f"Bearer {st.session_state.token}"
+                    
+                response = requests.post(
+                    f"{BACKEND_URL}/rag/chat",
+                    json={"query": prompt},
+                    headers=headers
+                )
+                
+                if response.status_code == 200:
+                    res_data = response.json()
+                    answer = res_data.get("answer", "No answer received.")
+                    citations = res_data.get("citations", [])
+                    
+                    if citations:
+                        answer += f"\n\n**Cited Clauses:** {', '.join([f'`{c}`' for c in citations])}"
+                        
+                    message_placeholder.markdown(answer)
+                    # Append assistant response
+                    st.session_state.chatbot_messages.append({"role": "assistant", "content": answer})
+                else:
+                    err_msg = f"❌ Request failed with status code {response.status_code}."
+                    message_placeholder.error(err_msg)
+                    st.session_state.chatbot_messages.append({"role": "assistant", "content": err_msg})
+            except Exception as e:
+                err_msg = f"❌ Connection error: {str(e)}"
+                message_placeholder.error(err_msg)
+                st.session_state.chatbot_messages.append({"role": "assistant", "content": err_msg})
