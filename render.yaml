@@ -16,7 +16,7 @@ services:
       - key: SECRET_KEY
         generateValue: true
       - key: OPENAI_API_KEY
-        sync: true
+        sync: false
       - key: OPENAI_MODEL
         value: meta-llama/llama-3-8b-instruct:free
       - key: OPENAI_API_BASE
